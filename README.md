@@ -1,6 +1,11 @@
-# Getting Started with Create React App
+# Zip Images Resizer
+[![CodeQL](https://github.com/organom/zip-images-resizer/actions/workflows/codeql-analysis.yml/badge.svg?branch=main)](https://github.com/organom/zip-images-resizer/actions/workflows/codeql-analysis.yml) [![GHPages](https://github.com/organom/zip-images-resizer/actions/workflows/ghpages.yml/badge.svg)](https://github.com/organom/zip-images-resizer/actions/workflows/ghpages.yml)
 
-This project was bootstrapped with [Create React App](https://github.com/facebook/create-react-app).
+Check live demo at: https://organom.github.io/zip-images-resizer
+
+# Development
+
+This project was bootstrapped with [Create React App](https://github.com/facebook/create-react-app) as `npx create-react-app zip-images-resizer --template typescript`
 
 ## Available Scripts
 
