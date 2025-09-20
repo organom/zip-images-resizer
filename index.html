@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Image Compressor - Compress ZIP Files Online</title>
+    <link rel="stylesheet" href="styles.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body>
+    <div class="container">
+        <header class="header">
+            <div class="logo">
+                <i class="fas fa-compress-alt"></i>
+                <h1>Image Compressor</h1>
+            </div>
+            <p class="subtitle">Compress your images while maintaining quality</p>
+        </header>
+
+        <main class="main-content">
+            <div class="upload-section" id="uploadSection">
+                <div class="upload-area" id="uploadArea">
+                    <div class="upload-icon">
+                        <i class="fas fa-cloud-upload-alt"></i>
+                    </div>
+                    <h2>Drop your ZIP file here</h2>
+                    <p>or click to browse</p>
+                    <input type="file" id="fileInput" accept=".zip" hidden>
+                    <div class="file-types">
+                        <span>Supports: ZIP files containing images</span>
+                    </div>
+                </div>
+
+                <div class="settings-panel">
+                    <div class="setting-group">
+                        <label for="maxSize">Target ZIP Size (MB)</label>
+                        <div class="input-group">
+                            <input type="number" id="maxSize" value="2.5" min="0.1" max="50" step="0.1">
+                            <span class="input-suffix">MB</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="processing-section" id="processingSection" style="display: none;">
+                <div class="file-info">
+                    <div class="file-details">
+                        <i class="fas fa-file-archive"></i>
+                        <div>
+                            <h3 id="fileName">Processing...</h3>
+                            <p id="fileSize">Analyzing file...</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="progress-container">
+                    <div class="progress-header">
+                        <span id="progressText">Initializing...</span>
+                        <span id="progressPercent">0%</span>
+                    </div>
+                    <div class="progress-bar">
+                        <div class="progress-fill" id="progressFill"></div>
+                    </div>
+                </div>
+
+                <div class="compression-stats">
+                    <div class="stat-item">
+                        <span class="stat-label">Original Size</span>
+                        <span class="stat-value" id="originalSize">-</span>
+                    </div>
+                    <div class="stat-item">
+                        <span class="stat-label">Compressed Size</span>
+                        <span class="stat-value" id="compressedSize">-</span>
+                    </div>
+                    <div class="stat-item">
+                        <span class="stat-label">Images Processed</span>
+                        <span class="stat-value" id="imagesProcessed">-</span>
+                    </div>
+                    <div class="stat-item">
+                        <span class="stat-label">Compression Ratio</span>
+                        <span class="stat-value" id="compressionRatio">-</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="result-section" id="resultSection" style="display: none;">
+                <div class="result-card">
+                    <div class="result-icon">
+                        <i class="fas fa-check-circle"></i>
+                    </div>
+                    <h2>Compression Complete!</h2>
+                    <p>Your images have been successfully compressed</p>
+                    
+                    <div class="result-stats">
+                        <div class="result-stat">
+                            <span class="result-label">Final Size</span>
+                            <span class="result-value" id="finalSize">-</span>
+                        </div>
+                        <div class="result-stat">
+                            <span class="result-label">Space Saved</span>
+                            <span class="result-value" id="spaceSaved">-</span>
+                        </div>
+                    </div>
+
+                    <div class="action-buttons">
+                        <button class="btn btn-primary" id="downloadBtn">
+                            <i class="fas fa-download"></i>
+                            Download Compressed ZIP
+                        </button>
+                        <button class="btn btn-secondary" id="newFileBtn">
+                            <i class="fas fa-plus"></i>
+                            Compress Another File
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </main>
+
+        <footer class="footer">
+            <p>&copy; 2024 Image Compressor. All processing is done locally in your browser.</p>
+        </footer>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <script src="script.js"></script>
+</body>
+</html>
+
