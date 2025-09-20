@@ -6,7 +6,7 @@ class ImageCompressor {
         this.imageFiles = [];
         this.totalImages = 0;
         this.processedImages = 0;
-        
+
         this.initializeEventListeners();
     }
 
@@ -69,14 +69,14 @@ class ImageCompressor {
         try {
             this.showProcessingSection();
             this.updateProgress('Loading ZIP file...', 0);
-            
+
             // Load the ZIP file
             const arrayBuffer = await file.arrayBuffer();
             this.originalZip = await JSZip.loadAsync(arrayBuffer);
-            
+
             // Extract image files
             await this.extractImageFiles();
-            
+
             if (this.imageFiles.length === 0) {
                 this.showError('No image files found in the ZIP archive.');
                 return;
@@ -84,10 +84,10 @@ class ImageCompressor {
 
             // Update file info
             this.updateFileInfo(file.name, file.size);
-            
+
             // Start compression process
             await this.compressImages();
-            
+
         } catch (error) {
             console.error('Error processing file:', error);
             this.showError('Error processing the ZIP file. Please try again.');
@@ -98,14 +98,14 @@ class ImageCompressor {
         this.imageFiles = [];
         const imageExtensions = ['.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp'];
         const customIgnore = ['__MACOSX' ];
-        
+
         for (const [filename, zipEntry] of Object.entries(this.originalZip.files)) {
             if (!zipEntry.dir) {
                 // Skip macOS metadata files and other system files
                 if (customIgnore.includes(filename) || filename.startsWith('.')) {
                     continue;
                 }
-                
+
                 const extension = filename.toLowerCase().substring(filename.lastIndexOf('.'));
                 if (imageExtensions.includes(extension)) {
                     try {
@@ -122,37 +122,37 @@ class ImageCompressor {
                 }
             }
         }
-        
+
         this.totalImages = this.imageFiles.length;
         this.updateStats();
     }
 
     async compressImages() {
         this.updateProgress('Analyzing images...', 5);
-        
+
         // Calculate target size per image
         const targetZipSizeBytes = this.maxSizeMB * 1024 * 1024;
         const overhead = 0.15; // 15% overhead for ZIP structure
         const targetTotalImageSize = targetZipSizeBytes * (1 - overhead);
-        
+
         // Calculate initial compression ratio
         const currentTotalSize = this.imageFiles.reduce((sum, img) => sum + img.originalSize, 0);
         let compressionRatio = targetTotalImageSize / currentTotalSize;
-        
+
         console.log(`Original total size: ${(currentTotalSize / 1024 / 1024).toFixed(2)} MB`);
         console.log(`Target total size: ${(targetTotalImageSize / 1024 / 1024).toFixed(2)} MB`);
         console.log(`Initial compression ratio: ${compressionRatio.toFixed(3)}`);
-        
+
         // Start with initial compression
         let currentIteration = 0;
         const maxIterations = 8;
         let currentZipSize = 0;
         let bestZip = null;
         let bestSize = Infinity;
-        
+
         while (currentIteration < maxIterations) {
             this.updateProgress(`Compression iteration ${currentIteration + 1}/${maxIterations}...`, 10 + (currentIteration * 70 / maxIterations));
-            
+
             // Adjust compression ratio for this iteration
             let iterationRatio = compressionRatio;
             if (currentIteration > 0) {
@@ -164,34 +164,35 @@ class ImageCompressor {
                     iterationRatio *= 1.1; // Increase by 10%
                 }
             }
-            
+
             // Ensure minimum quality
             iterationRatio = Math.max(iterationRatio, 0.05);
-            
+
             console.log(`Iteration ${currentIteration + 1}: Using ratio ${iterationRatio.toFixed(3)}`);
-            
+
             // Compress all images
             const compressedImages = [];
             this.processedImages = 0;
-            
+
+            this.imageFiles.sort((x, y) => x.originalSize - y.originalSize);
             for (let i = 0; i < this.imageFiles.length; i++) {
                 const imageFile = this.imageFiles[i];
-                
+
                 try {
                     const compressedData = await this.compressImage(imageFile, iterationRatio);
                     compressedImages.push({
                         name: imageFile.name,
                         data: compressedData
                     });
-                    
+
                     this.processedImages++;
                     this.updateStats();
-                    
+
                     // Update progress within iteration
                     const iterationProgress = (this.processedImages / this.totalImages) * (70 / maxIterations);
-                    this.updateProgress(`Processing ${imageFile.name.substring(0, 30)}...`, 
+                    this.updateProgress(`Processing ${imageFile.name.substring(0, 30)}...`,
                         10 + (currentIteration * 70 / maxIterations) + iterationProgress);
-                        
+
                 } catch (error) {
                     console.error(`Failed to compress ${imageFile.name}:`, error);
                     // Use original data if compression fails
@@ -202,13 +203,13 @@ class ImageCompressor {
                     this.processedImages++;
                 }
             }
-            
+
             // Create ZIP and check size
             const testZip = new JSZip();
             for (const img of compressedImages) {
                 testZip.file(img.name, img.data);
             }
-            
+
             try {
                 const zipBlob = await testZip.generateAsync({
                     type: 'blob',
@@ -216,60 +217,60 @@ class ImageCompressor {
                     compressionOptions: { level: 6 }
                 });
                 currentZipSize = zipBlob.size;
-                
+
                 console.log(`Iteration ${currentIteration + 1}: ZIP size ${(currentZipSize / 1024 / 1024).toFixed(2)} MB`);
-                
+
                 // Keep track of the best result
                 if (currentZipSize <= targetZipSizeBytes && currentZipSize < bestSize) {
                     bestZip = testZip;
                     bestSize = currentZipSize;
                 }
-                
+
                 // Check if we've reached acceptable target size
                 if (currentZipSize <= targetZipSizeBytes && currentZipSize >= targetZipSizeBytes * 0.8) {
                     this.compressedZip = testZip;
                     break;
                 }
-                
+
                 // If this is the last iteration, use the best result we have
                 if (currentIteration === maxIterations - 1) {
                     this.compressedZip = bestZip || testZip;
                     break;
                 }
-                
+
                 // Adjust compression ratio for next iteration
                 if (currentZipSize > targetZipSizeBytes) {
                     compressionRatio *= 0.8; // More aggressive compression
                 } else {
                     compressionRatio *= 1.05; // Less compression
                 }
-                
+
             } catch (error) {
                 console.error(`Failed to generate ZIP in iteration ${currentIteration + 1}:`, error);
                 if (currentIteration === maxIterations - 1) {
                     throw error;
                 }
             }
-            
+
             currentIteration++;
         }
-        
+
         this.updateProgress('Finalizing...', 90);
-        
+
         // Generate final ZIP
         if (!this.compressedZip) {
             throw new Error('Failed to create compressed ZIP');
         }
-        
+
         const finalBlob = await this.compressedZip.generateAsync({
             type: 'blob',
             compression: 'DEFLATE',
             compressionOptions: { level: 9 }
         });
         this.finalZipBlob = finalBlob;
-        
+
         console.log(`Final ZIP size: ${(finalBlob.size / 1024 / 1024).toFixed(2)} MB`);
-        
+
         this.updateProgress('Complete!', 100);
         this.showResultSection(finalBlob.size);
     }
@@ -277,14 +278,14 @@ class ImageCompressor {
     calculateCompressionRatio(iteration, targetTotalSize) {
         // Calculate current total size
         const currentTotalSize = this.imageFiles.reduce((sum, img) => sum + img.originalSize, 0);
-        
+
         // Base compression ratio
         let ratio = targetTotalSize / currentTotalSize;
-        
+
         // Apply progressive compression
         const progressiveFactor = Math.pow(0.8, iteration);
         ratio *= progressiveFactor;
-        
+
         // Ensure minimum quality
         return Math.max(ratio, 0.1);
     }
@@ -293,7 +294,7 @@ class ImageCompressor {
         return new Promise((resolve, reject) => {
             const img = new Image();
             let timeoutId;
-            
+
             // Set a timeout to prevent hanging
             timeoutId = setTimeout(() => {
                 console.warn(`Timeout processing ${imageFile.name}, using fallback compression`);
@@ -301,24 +302,24 @@ class ImageCompressor {
                 const fallbackBlob = new Blob([imageFile.originalData]);
                 resolve(fallbackBlob);
             }, 10000); // 10 second timeout
-            
+
             img.onload = () => {
                 try {
                     clearTimeout(timeoutId);
-                    
+
                     const canvas = document.createElement('canvas');
                     const ctx = canvas.getContext('2d');
-                    
+
                     // Calculate new dimensions with minimum size constraints
                     const scaleFactor = Math.sqrt(Math.max(compressionRatio, 0.05));
                     const minWidth = 50;
                     const minHeight = 50;
                     const maxWidth = 2048; // Limit maximum width to prevent memory issues
                     const maxHeight = 2048;
-                    
+
                     let newWidth = Math.max(minWidth, Math.floor(img.width * scaleFactor));
                     let newHeight = Math.max(minHeight, Math.floor(img.height * scaleFactor));
-                    
+
                     // Ensure we don't exceed maximum dimensions
                     if (newWidth > maxWidth || newHeight > maxHeight) {
                         const aspectRatio = img.width / img.height;
@@ -330,20 +331,20 @@ class ImageCompressor {
                             newWidth = Math.floor(newHeight * aspectRatio);
                         }
                     }
-                    
+
                     canvas.width = newWidth;
                     canvas.height = newHeight;
-                    
+
                     // Use high-quality scaling
                     ctx.imageSmoothingEnabled = true;
                     ctx.imageSmoothingQuality = 'high';
-                    
+
                     // Draw resized image
                     ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-                    
+
                     // Convert to blob with quality adjustment
                     const quality = Math.max(0.1, Math.min(0.95, compressionRatio * 1.2));
-                    
+
                     if (imageFile.extension === '.png') {
                         // For PNG, we can only resize, not adjust quality
                         canvas.toBlob((blob) => {
@@ -372,30 +373,30 @@ class ImageCompressor {
                     resolve(new Blob([imageFile.originalData]));
                 }
             };
-            
+
             img.onerror = () => {
                 clearTimeout(timeoutId);
                 console.error(`Failed to load image: ${imageFile.name}`);
                 // Fallback to original data
                 resolve(new Blob([imageFile.originalData]));
             };
-            
+
             // Create blob URL from array buffer
             try {
                 const blob = new Blob([imageFile.originalData]);
                 img.src = URL.createObjectURL(blob);
-                
+
                 // Clean up the blob URL after processing
                 img.onload = (originalOnload => function() {
                     URL.revokeObjectURL(img.src);
                     return originalOnload.apply(this, arguments);
                 })(img.onload);
-                
+
                 img.onerror = (originalOnerror => function() {
                     URL.revokeObjectURL(img.src);
                     return originalOnerror.apply(this, arguments);
                 })(img.onerror);
-                
+
             } catch (error) {
                 clearTimeout(timeoutId);
                 console.error(`Error creating blob URL for ${imageFile.name}:`, error);
@@ -419,7 +420,7 @@ class ImageCompressor {
         const originalSize = this.imageFiles.reduce((sum, img) => sum + img.originalSize, 0);
         document.getElementById('originalSize').textContent = this.formatFileSize(originalSize);
         document.getElementById('imagesProcessed').textContent = `${this.processedImages}/${this.totalImages}`;
-        
+
         if (this.finalZipBlob) {
             document.getElementById('compressedSize').textContent = this.formatFileSize(this.finalZipBlob.size);
             const ratio = ((originalSize - this.finalZipBlob.size) / originalSize * 100).toFixed(1);
@@ -437,10 +438,10 @@ class ImageCompressor {
         const originalSize = this.imageFiles.reduce((sum, img) => sum + img.originalSize, 0);
         const spaceSaved = originalSize - finalSize;
         const savingsPercent = ((spaceSaved / originalSize) * 100).toFixed(1);
-        
+
         document.getElementById('finalSize').textContent = this.formatFileSize(finalSize);
         document.getElementById('spaceSaved').textContent = `${this.formatFileSize(spaceSaved)} (${savingsPercent}%)`;
-        
+
         document.getElementById('processingSection').style.display = 'none';
         document.getElementById('resultSection').style.display = 'block';
     }
@@ -465,7 +466,7 @@ class ImageCompressor {
         this.imageFiles = [];
         this.totalImages = 0;
         this.processedImages = 0;
-        
+
         document.getElementById('fileInput').value = '';
         document.getElementById('uploadSection').style.display = 'block';
         document.getElementById('processingSection').style.display = 'none';
