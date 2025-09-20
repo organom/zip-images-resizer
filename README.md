@@ -123,6 +123,7 @@ This project is open source and available under the MIT License.
 - Font Awesome for beautiful icons
 - Google Fonts for the Inter typeface
 - Canvas API for image processing capabilities
+- Manus (https://manus.ai) for initial project scaffolding
 
 ---
 
