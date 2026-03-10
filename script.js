@@ -1,52 +1,103 @@
-class ImageCompressor {
-    constructor() {
-        this.maxSizeMB = 2.5;
-        this.originalZip = null;
-        this.compressedZip = null;
-        this.imageFiles = [];
-        this.totalImages = 0;
-        this.processedImages = 0;
+// Compression algorithm constants
+const CONFIG = {
+    MAX_ITERATIONS: 8,
+    ZIP_OVERHEAD_FACTOR: 0.15,
+    MIN_COMPRESSION_RATIO: 0.05,
+    QUALITY_MIN: 0.1,
+    QUALITY_MAX: 95 / 100,
+    QUALITY_MULTIPLIER: 1.2,
+    MIN_DIMENSION: 50,
+    MAX_DIMENSION: 2048,
+    IMAGE_TIMEOUT_MS: 10000,
+    // Convergence: if result is within this range of target, accept it
+    ACCEPTABLE_LOW: 0.8,   // 80% of target
+    ACCEPTABLE_HIGH: 1.0,  // 100% of target
+    // Ratio adjustments per iteration
+    RATIO_DECREASE: 0.85,  // compress more aggressively when over target
+    RATIO_INCREASE: 1.1,   // compress less when far under target
+    // ZIP compression levels
+    ZIP_TEST_LEVEL: 6,
+    ZIP_FINAL_LEVEL: 9,
+};
 
+// Map extensions to their correct MIME types for canvas export
+const MIME_TYPES = {
+    '.jpg': 'image/jpeg',
+    '.jpeg': 'image/jpeg',
+    '.png': 'image/png',
+    '.webp': 'image/webp',
+    // GIF and BMP are not supported by canvas.toBlob — fall back to PNG to preserve transparency
+    '.gif': 'image/png',
+    '.bmp': 'image/png',
+};
+
+const IMAGE_EXTENSIONS = new Set(Object.keys(MIME_TYPES));
+
+// Formats that support a quality parameter in canvas.toBlob
+const QUALITY_FORMATS = new Set(['image/jpeg', 'image/webp']);
+
+class ImageCompressor {
+    maxSizeMB = 2.5;
+    originalZip = null;
+    compressedZip = null;
+    imageFiles = [];
+    totalImages = 0;
+    processedImages = 0;
+    finalZipBlob = null;
+
+    constructor() {
+        this.el = {
+            uploadArea: document.getElementById('uploadArea'),
+            fileInput: document.getElementById('fileInput'),
+            maxSize: document.getElementById('maxSize'),
+            downloadBtn: document.getElementById('downloadBtn'),
+            newFileBtn: document.getElementById('newFileBtn'),
+            progressText: document.getElementById('progressText'),
+            progressPercent: document.getElementById('progressPercent'),
+            progressFill: document.getElementById('progressFill'),
+            fileName: document.getElementById('fileName'),
+            fileSize: document.getElementById('fileSize'),
+            originalSize: document.getElementById('originalSize'),
+            imagesProcessed: document.getElementById('imagesProcessed'),
+            compressedSize: document.getElementById('compressedSize'),
+            compressionRatio: document.getElementById('compressionRatio'),
+            finalSize: document.getElementById('finalSize'),
+            spaceSaved: document.getElementById('spaceSaved'),
+            uploadSection: document.getElementById('uploadSection'),
+            processingSection: document.getElementById('processingSection'),
+            resultSection: document.getElementById('resultSection'),
+        };
         this.initializeEventListeners();
     }
 
     initializeEventListeners() {
-        const uploadArea = document.getElementById('uploadArea');
-        const fileInput = document.getElementById('fileInput');
-        const maxSizeInput = document.getElementById('maxSize');
-        const downloadBtn = document.getElementById('downloadBtn');
-        const newFileBtn = document.getElementById('newFileBtn');
+        this.el.uploadArea.addEventListener('click', () => this.el.fileInput.click());
+        this.el.uploadArea.addEventListener('dragover', this.handleDragOver.bind(this));
+        this.el.uploadArea.addEventListener('dragleave', this.handleDragLeave.bind(this));
+        this.el.uploadArea.addEventListener('drop', this.handleDrop.bind(this));
+        this.el.fileInput.addEventListener('change', this.handleFileSelect.bind(this));
 
-        // File upload events
-        uploadArea.addEventListener('click', () => fileInput.click());
-        uploadArea.addEventListener('dragover', this.handleDragOver.bind(this));
-        uploadArea.addEventListener('dragleave', this.handleDragLeave.bind(this));
-        uploadArea.addEventListener('drop', this.handleDrop.bind(this));
-        fileInput.addEventListener('change', this.handleFileSelect.bind(this));
-
-        // Settings
-        maxSizeInput.addEventListener('change', (e) => {
-            this.maxSizeMB = parseFloat(e.target.value);
+        this.el.maxSize.addEventListener('change', (e) => {
+            this.maxSizeMB = Number.parseFloat(e.target.value);
         });
 
-        // Action buttons
-        downloadBtn.addEventListener('click', this.downloadCompressedZip.bind(this));
-        newFileBtn.addEventListener('click', this.resetApplication.bind(this));
+        this.el.downloadBtn.addEventListener('click', this.downloadCompressedZip.bind(this));
+        this.el.newFileBtn.addEventListener('click', this.resetApplication.bind(this));
     }
 
     handleDragOver(e) {
         e.preventDefault();
-        document.getElementById('uploadArea').classList.add('dragover');
+        this.el.uploadArea.classList.add('dragover');
     }
 
     handleDragLeave(e) {
         e.preventDefault();
-        document.getElementById('uploadArea').classList.remove('dragover');
+        this.el.uploadArea.classList.remove('dragover');
     }
 
     handleDrop(e) {
         e.preventDefault();
-        document.getElementById('uploadArea').classList.remove('dragover');
+        this.el.uploadArea.classList.remove('dragover');
         const files = e.dataTransfer.files;
         if (files.length > 0) {
             this.processFile(files[0]);
@@ -67,14 +118,12 @@ class ImageCompressor {
         }
 
         try {
-            this.showProcessingSection();
+            this.showSection('processingSection');
             this.updateProgress('Loading ZIP file...', 0);
 
-            // Load the ZIP file
             const arrayBuffer = await file.arrayBuffer();
             this.originalZip = await JSZip.loadAsync(arrayBuffer);
 
-            // Extract image files
             await this.extractImageFiles();
 
             if (this.imageFiles.length === 0) {
@@ -82,44 +131,60 @@ class ImageCompressor {
                 return;
             }
 
-            // Update file info
             this.updateFileInfo(file.name, file.size);
-
-            // Start compression process
             await this.compressImages();
-
         } catch (error) {
             console.error('Error processing file:', error);
             this.showError('Error processing the ZIP file. Please try again.');
         }
     }
 
+    get totalOriginalSize() {
+        return this.imageFiles.reduce((sum, img) => sum + img.originalSize, 0);
+    }
+
+    generateZipBlob(zip, level) {
+        return zip.generateAsync({
+            type: 'blob',
+            compression: 'DEFLATE',
+            compressionOptions: { level },
+        });
+    }
+
+    showSection(name) {
+        for (const section of ['uploadSection', 'processingSection', 'resultSection']) {
+            this.el[section].style.display = section === name ? 'block' : 'none';
+        }
+    }
+
+    isIgnoredPath(filename) {
+        const parts = filename.split('/');
+        return parts.some(part => part === '__MACOSX' || part.startsWith('.'));
+    }
+
     async extractImageFiles() {
         this.imageFiles = [];
-        const imageExtensions = ['.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp'];
-        const customIgnore = ['__MACOSX' ];
 
         for (const [filename, zipEntry] of Object.entries(this.originalZip.files)) {
-            if (!zipEntry.dir) {
-                // Skip macOS metadata files and other system files
-                if (customIgnore.includes(filename) || filename.startsWith('.')) {
-                    continue;
-                }
+            if (zipEntry.dir || this.isIgnoredPath(filename)) {
+                continue;
+            }
 
-                const extension = filename.toLowerCase().substring(filename.lastIndexOf('.'));
-                if (imageExtensions.includes(extension)) {
-                    try {
-                        const arrayBuffer = await zipEntry.async('arraybuffer');
-                        this.imageFiles.push({
-                            name: filename,
-                            originalData: arrayBuffer,
-                            extension: extension,
-                            originalSize: arrayBuffer.byteLength
-                        });
-                    } catch (error) {
-                        console.warn(`Failed to extract ${filename}:`, error);
-                    }
-                }
+            const extension = filename.toLowerCase().substring(filename.lastIndexOf('.'));
+            if (!IMAGE_EXTENSIONS.has(extension)) {
+                continue;
+            }
+
+            try {
+                const arrayBuffer = await zipEntry.async('arraybuffer');
+                this.imageFiles.push({
+                    name: filename,
+                    originalData: arrayBuffer,
+                    extension: extension,
+                    originalSize: arrayBuffer.byteLength,
+                });
+            } catch (error) {
+                console.warn(`Failed to extract ${filename}:`, error);
             }
         }
 
@@ -127,207 +192,199 @@ class ImageCompressor {
         this.updateStats();
     }
 
+    async trySkipCompression(targetZipSizeBytes) {
+        const targetTotalImageSize = targetZipSizeBytes * (1 - CONFIG.ZIP_OVERHEAD_FACTOR);
+
+        if (this.totalOriginalSize > targetTotalImageSize) return false;
+
+        const finalBlob = await this.generateZipBlob(this.originalZip, CONFIG.ZIP_FINAL_LEVEL);
+
+        if (finalBlob.size > targetZipSizeBytes) return false;
+
+        this.compressedZip = this.originalZip;
+        this.finalZipBlob = finalBlob;
+        this.processedImages = this.totalImages;
+        this.updateProgress('Complete!', 100);
+        this.updateStats();
+        this.showResults(finalBlob.size);
+        return true;
+    }
+
+    trackBestResult(testZip, currentZipSize, targetZipSizeBytes, bestZip, bestSize) {
+        const underTarget = currentZipSize <= targetZipSizeBytes;
+        const bestUnderTarget = bestSize <= targetZipSizeBytes;
+
+        // Prefer the largest result that fits under target
+        if (underTarget && (!bestUnderTarget || currentZipSize > bestSize)) {
+            return { zip: testZip, size: currentZipSize };
+        }
+        // If nothing fits yet, prefer the smallest over-target result
+        if (!bestUnderTarget && !underTarget && currentZipSize < bestSize) {
+            return { zip: testZip, size: currentZipSize };
+        }
+        return { zip: bestZip, size: bestSize };
+    }
+
+    async runCompressionIteration(compressionRatio, iteration) {
+        const ratio = Math.max(compressionRatio, CONFIG.MIN_COMPRESSION_RATIO);
+
+        this.updateProgress(
+            `Compression pass ${iteration + 1}/${CONFIG.MAX_ITERATIONS}...`,
+            10 + (iteration * 70 / CONFIG.MAX_ITERATIONS)
+        );
+
+        console.log(`Iteration ${iteration + 1}: ratio=${ratio.toFixed(3)}`);
+
+        const compressedImages = await this.compressAllImages(ratio, iteration);
+        const testZip = this.buildZip(compressedImages);
+
+        const zipBlob = await this.generateZipBlob(testZip, CONFIG.ZIP_TEST_LEVEL);
+
+        console.log(`Iteration ${iteration + 1}: ZIP size ${(zipBlob.size / 1024 / 1024).toFixed(2)} MB`);
+        return { testZip, zipSize: zipBlob.size };
+    }
+
     async compressImages() {
         this.updateProgress('Analyzing images...', 5);
 
-        // Calculate target size per image
         const targetZipSizeBytes = this.maxSizeMB * 1024 * 1024;
-        const overhead = 0.15; // 15% overhead for ZIP structure
-        const targetTotalImageSize = targetZipSizeBytes * (1 - overhead);
 
-        // Calculate initial compression ratio
-        const currentTotalSize = this.imageFiles.reduce((sum, img) => sum + img.originalSize, 0);
-        let compressionRatio = targetTotalImageSize / currentTotalSize;
+        if (await this.trySkipCompression(targetZipSizeBytes)) return;
 
-        console.log(`Original total size: ${(currentTotalSize / 1024 / 1024).toFixed(2)} MB`);
-        console.log(`Target total size: ${(targetTotalImageSize / 1024 / 1024).toFixed(2)} MB`);
-        console.log(`Initial compression ratio: ${compressionRatio.toFixed(3)}`);
-
-        // Start with initial compression
-        let currentIteration = 0;
-        const maxIterations = 8;
-        let currentZipSize = 0;
+        const targetTotalImageSize = targetZipSizeBytes * (1 - CONFIG.ZIP_OVERHEAD_FACTOR);
+        let compressionRatio = targetTotalImageSize / this.totalOriginalSize;
         let bestZip = null;
         let bestSize = Infinity;
 
-        while (currentIteration < maxIterations) {
-            this.updateProgress(`Compression iteration ${currentIteration + 1}/${maxIterations}...`, 10 + (currentIteration * 70 / maxIterations));
+        this.imageFiles.sort((a, b) => a.originalSize - b.originalSize);
 
-            // Adjust compression ratio for this iteration
-            let iterationRatio = compressionRatio;
-            if (currentIteration > 0) {
-                // If we're over target, compress more aggressively
-                if (currentZipSize > targetZipSizeBytes) {
-                    iterationRatio *= 0.85; // Reduce by 15%
-                } else if (currentZipSize < targetZipSizeBytes * 0.8) {
-                    // If we're way under target, compress less
-                    iterationRatio *= 1.1; // Increase by 10%
-                }
-            }
-
-            // Ensure minimum quality
-            iterationRatio = Math.max(iterationRatio, 0.05);
-
-            console.log(`Iteration ${currentIteration + 1}: Using ratio ${iterationRatio.toFixed(3)}`);
-
-            // Compress all images
-            const compressedImages = [];
-            this.processedImages = 0;
-
-            this.imageFiles.sort((x, y) => x.originalSize - y.originalSize);
-            for (let i = 0; i < this.imageFiles.length; i++) {
-                const imageFile = this.imageFiles[i];
-
-                try {
-                    const compressedData = await this.compressImage(imageFile, iterationRatio);
-                    compressedImages.push({
-                        name: imageFile.name,
-                        data: compressedData
-                    });
-
-                    this.processedImages++;
-                    this.updateStats();
-
-                    // Update progress within iteration
-                    const iterationProgress = (this.processedImages / this.totalImages) * (70 / maxIterations);
-                    this.updateProgress(`Processing ${imageFile.name.substring(0, 30)}...`,
-                        10 + (currentIteration * 70 / maxIterations) + iterationProgress);
-
-                } catch (error) {
-                    console.error(`Failed to compress ${imageFile.name}:`, error);
-                    // Use original data if compression fails
-                    compressedImages.push({
-                        name: imageFile.name,
-                        data: new Blob([imageFile.originalData])
-                    });
-                    this.processedImages++;
-                }
-            }
-
-            // Create ZIP and check size
-            const testZip = new JSZip();
-            for (const img of compressedImages) {
-                testZip.file(img.name, img.data);
-            }
-
+        for (let iteration = 0; iteration < CONFIG.MAX_ITERATIONS; iteration++) {
+            let result;
             try {
-                const zipBlob = await testZip.generateAsync({
-                    type: 'blob',
-                    compression: 'DEFLATE',
-                    compressionOptions: { level: 6 }
-                });
-                currentZipSize = zipBlob.size;
-
-                console.log(`Iteration ${currentIteration + 1}: ZIP size ${(currentZipSize / 1024 / 1024).toFixed(2)} MB`);
-
-                // Keep track of the best result
-                if (currentZipSize <= targetZipSizeBytes && currentZipSize < bestSize) {
-                    bestZip = testZip;
-                    bestSize = currentZipSize;
-                }
-
-                // Check if we've reached acceptable target size
-                if (currentZipSize <= targetZipSizeBytes && currentZipSize >= targetZipSizeBytes * 0.8) {
-                    this.compressedZip = testZip;
-                    break;
-                }
-
-                // If this is the last iteration, use the best result we have
-                if (currentIteration === maxIterations - 1) {
-                    this.compressedZip = bestZip || testZip;
-                    break;
-                }
-
-                // Adjust compression ratio for next iteration
-                if (currentZipSize > targetZipSizeBytes) {
-                    compressionRatio *= 0.8; // More aggressive compression
-                } else {
-                    compressionRatio *= 1.05; // Less compression
-                }
-
+                result = await this.runCompressionIteration(compressionRatio, iteration);
             } catch (error) {
-                console.error(`Failed to generate ZIP in iteration ${currentIteration + 1}:`, error);
-                if (currentIteration === maxIterations - 1) {
-                    throw error;
-                }
+                console.error(`Failed ZIP generation in iteration ${iteration + 1}:`, error);
+                if (iteration === CONFIG.MAX_ITERATIONS - 1) throw error;
+                compressionRatio *= CONFIG.RATIO_DECREASE;
+                continue;
             }
 
-            currentIteration++;
+            const best = this.trackBestResult(result.testZip, result.zipSize, targetZipSizeBytes, bestZip, bestSize);
+            bestZip = best.zip;
+            bestSize = best.size;
+
+            const relativeSize = result.zipSize / targetZipSizeBytes;
+            if (relativeSize >= CONFIG.ACCEPTABLE_LOW && relativeSize <= CONFIG.ACCEPTABLE_HIGH) {
+                break;
+            }
+
+            if (result.zipSize > targetZipSizeBytes) {
+                compressionRatio *= CONFIG.RATIO_DECREASE;
+            } else {
+                compressionRatio *= CONFIG.RATIO_INCREASE;
+            }
         }
 
-        this.updateProgress('Finalizing...', 90);
-
-        // Generate final ZIP
+        this.compressedZip = bestZip;
         if (!this.compressedZip) {
             throw new Error('Failed to create compressed ZIP');
         }
 
-        const finalBlob = await this.compressedZip.generateAsync({
-            type: 'blob',
-            compression: 'DEFLATE',
-            compressionOptions: { level: 9 }
-        });
+        this.updateProgress('Finalizing...', 90);
+
+        const finalBlob = await this.generateZipBlob(this.compressedZip, CONFIG.ZIP_FINAL_LEVEL);
         this.finalZipBlob = finalBlob;
 
         console.log(`Final ZIP size: ${(finalBlob.size / 1024 / 1024).toFixed(2)} MB`);
 
         this.updateProgress('Complete!', 100);
-        this.showResultSection(finalBlob.size);
+        this.updateStats();
+        this.showResults(finalBlob.size);
     }
 
-    calculateCompressionRatio(iteration, targetTotalSize) {
-        // Calculate current total size
-        const currentTotalSize = this.imageFiles.reduce((sum, img) => sum + img.originalSize, 0);
+    async compressAllImages(ratio, iteration) {
+        const compressedImages = [];
+        this.processedImages = 0;
 
-        // Base compression ratio
-        let ratio = targetTotalSize / currentTotalSize;
+        for (const imageFile of this.imageFiles) {
+            try {
+                const compressedData = await this.compressImage(imageFile, ratio);
+                compressedImages.push({ name: imageFile.name, data: compressedData });
+            } catch (error) {
+                console.error(`Failed to compress ${imageFile.name}:`, error);
+                compressedImages.push({ name: imageFile.name, data: new Blob([imageFile.originalData]) });
+            }
 
-        // Apply progressive compression
-        const progressiveFactor = Math.pow(0.8, iteration);
-        ratio *= progressiveFactor;
+            this.processedImages++;
+            this.updateStats();
 
-        // Ensure minimum quality
-        return Math.max(ratio, 0.1);
+            const iterationProgress = (this.processedImages / this.totalImages) * (70 / CONFIG.MAX_ITERATIONS);
+            this.updateProgress(
+                `Processing ${imageFile.name.split('/').pop().substring(0, 30)}...`,
+                10 + (iteration * 70 / CONFIG.MAX_ITERATIONS) + iterationProgress
+            );
+        }
+
+        return compressedImages;
     }
 
-    async compressImage(imageFile, compressionRatio) {
-        return new Promise((resolve, reject) => {
+    buildZip(compressedImages) {
+        const zip = new JSZip();
+        for (const img of compressedImages) {
+            zip.file(img.name, img.data);
+        }
+        return zip;
+    }
+
+    compressImage(imageFile, compressionRatio) {
+        return new Promise((resolve) => {
+            let settled = false;
+
+            const settle = (blob) => {
+                if (settled) return;
+                settled = true;
+                clearTimeout(timeoutId);
+                if (blobUrl) URL.revokeObjectURL(blobUrl);
+                resolve(blob);
+            };
+
+            const fallback = () => settle(new Blob([imageFile.originalData]));
+
+            const timeoutId = setTimeout(() => {
+                console.warn(`Timeout processing ${imageFile.name}, using original`);
+                fallback();
+            }, CONFIG.IMAGE_TIMEOUT_MS);
+
+            let blobUrl = null;
+
+            try {
+                const blob = new Blob([imageFile.originalData]);
+                blobUrl = URL.createObjectURL(blob);
+            } catch (error) {
+                console.error(`Error creating blob URL for ${imageFile.name}:`, error);
+                fallback();
+                return;
+            }
+
             const img = new Image();
-            let timeoutId;
-
-            // Set a timeout to prevent hanging
-            timeoutId = setTimeout(() => {
-                console.warn(`Timeout processing ${imageFile.name}, using fallback compression`);
-                // Create a simple fallback blob
-                const fallbackBlob = new Blob([imageFile.originalData]);
-                resolve(fallbackBlob);
-            }, 10000); // 10 second timeout
 
             img.onload = () => {
                 try {
-                    clearTimeout(timeoutId);
-
                     const canvas = document.createElement('canvas');
                     const ctx = canvas.getContext('2d');
 
-                    // Calculate new dimensions with minimum size constraints
-                    const scaleFactor = Math.sqrt(Math.max(compressionRatio, 0.05));
-                    const minWidth = 50;
-                    const minHeight = 50;
-                    const maxWidth = 2048; // Limit maximum width to prevent memory issues
-                    const maxHeight = 2048;
+                    const scaleFactor = Math.sqrt(Math.max(compressionRatio, CONFIG.MIN_COMPRESSION_RATIO));
+                    let newWidth = Math.max(CONFIG.MIN_DIMENSION, Math.floor(img.width * scaleFactor));
+                    let newHeight = Math.max(CONFIG.MIN_DIMENSION, Math.floor(img.height * scaleFactor));
 
-                    let newWidth = Math.max(minWidth, Math.floor(img.width * scaleFactor));
-                    let newHeight = Math.max(minHeight, Math.floor(img.height * scaleFactor));
-
-                    // Ensure we don't exceed maximum dimensions
-                    if (newWidth > maxWidth || newHeight > maxHeight) {
+                    // Clamp to maximum dimensions while preserving aspect ratio
+                    if (newWidth > CONFIG.MAX_DIMENSION || newHeight > CONFIG.MAX_DIMENSION) {
                         const aspectRatio = img.width / img.height;
                         if (aspectRatio > 1) {
-                            newWidth = Math.min(newWidth, maxWidth);
+                            newWidth = Math.min(newWidth, CONFIG.MAX_DIMENSION);
                             newHeight = Math.floor(newWidth / aspectRatio);
                         } else {
-                            newHeight = Math.min(newHeight, maxHeight);
+                            newHeight = Math.min(newHeight, CONFIG.MAX_DIMENSION);
                             newWidth = Math.floor(newHeight * aspectRatio);
                         }
                     }
@@ -335,128 +392,86 @@ class ImageCompressor {
                     canvas.width = newWidth;
                     canvas.height = newHeight;
 
-                    // Use high-quality scaling
                     ctx.imageSmoothingEnabled = true;
                     ctx.imageSmoothingQuality = 'high';
+                    ctx.drawImage(img, 0, 0, newWidth, newHeight);
 
-                    // Draw resized image
-                    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+                    const mimeType = MIME_TYPES[imageFile.extension] || 'image/jpeg';
+                    const supportsQuality = QUALITY_FORMATS.has(mimeType);
+                    const quality = supportsQuality
+                        ? Math.max(CONFIG.QUALITY_MIN, Math.min(CONFIG.QUALITY_MAX, compressionRatio * CONFIG.QUALITY_MULTIPLIER))
+                        : undefined;
 
-                    // Convert to blob with quality adjustment
-                    const quality = Math.max(0.1, Math.min(0.95, compressionRatio * 1.2));
-
-                    if (imageFile.extension === '.png') {
-                        // For PNG, we can only resize, not adjust quality
-                        canvas.toBlob((blob) => {
-                            if (blob) {
-                                resolve(blob);
+                    canvas.toBlob(
+                        (resultBlob) => {
+                            if (resultBlob) {
+                                settle(resultBlob);
                             } else {
-                                console.warn(`Failed to create PNG blob for ${imageFile.name}, using original`);
-                                resolve(new Blob([imageFile.originalData]));
+                                console.warn(`Failed to create blob for ${imageFile.name}, using original`);
+                                fallback();
                             }
-                        }, 'image/png');
-                    } else {
-                        // For JPEG and other formats, adjust quality
-                        canvas.toBlob((blob) => {
-                            if (blob) {
-                                resolve(blob);
-                            } else {
-                                console.warn(`Failed to create JPEG blob for ${imageFile.name}, using original`);
-                                resolve(new Blob([imageFile.originalData]));
-                            }
-                        }, 'image/jpeg', quality);
-                    }
+                        },
+                        mimeType,
+                        quality
+                    );
                 } catch (error) {
-                    clearTimeout(timeoutId);
                     console.error(`Error processing ${imageFile.name}:`, error);
-                    // Fallback to original data
-                    resolve(new Blob([imageFile.originalData]));
+                    fallback();
                 }
             };
 
             img.onerror = () => {
-                clearTimeout(timeoutId);
                 console.error(`Failed to load image: ${imageFile.name}`);
-                // Fallback to original data
-                resolve(new Blob([imageFile.originalData]));
+                fallback();
             };
 
-            // Create blob URL from array buffer
-            try {
-                const blob = new Blob([imageFile.originalData]);
-                img.src = URL.createObjectURL(blob);
-
-                // Clean up the blob URL after processing
-                img.onload = (originalOnload => function() {
-                    URL.revokeObjectURL(img.src);
-                    return originalOnload.apply(this, arguments);
-                })(img.onload);
-
-                img.onerror = (originalOnerror => function() {
-                    URL.revokeObjectURL(img.src);
-                    return originalOnerror.apply(this, arguments);
-                })(img.onerror);
-
-            } catch (error) {
-                clearTimeout(timeoutId);
-                console.error(`Error creating blob URL for ${imageFile.name}:`, error);
-                resolve(new Blob([imageFile.originalData]));
-            }
+            img.src = blobUrl;
         });
     }
 
     updateProgress(text, percent) {
-        document.getElementById('progressText').textContent = text;
-        document.getElementById('progressPercent').textContent = `${Math.round(percent)}%`;
-        document.getElementById('progressFill').style.width = `${percent}%`;
+        this.el.progressText.textContent = text;
+        this.el.progressPercent.textContent = `${Math.round(percent)}%`;
+        this.el.progressFill.style.width = `${percent}%`;
     }
 
     updateFileInfo(fileName, fileSize) {
-        document.getElementById('fileName').textContent = fileName;
-        document.getElementById('fileSize').textContent = this.formatFileSize(fileSize);
+        this.el.fileName.textContent = fileName;
+        this.el.fileSize.textContent = this.formatFileSize(fileSize);
     }
 
     updateStats() {
-        const originalSize = this.imageFiles.reduce((sum, img) => sum + img.originalSize, 0);
-        document.getElementById('originalSize').textContent = this.formatFileSize(originalSize);
-        document.getElementById('imagesProcessed').textContent = `${this.processedImages}/${this.totalImages}`;
+        this.el.originalSize.textContent = this.formatFileSize(this.totalOriginalSize);
+        this.el.imagesProcessed.textContent = `${this.processedImages}/${this.totalImages}`;
 
         if (this.finalZipBlob) {
-            document.getElementById('compressedSize').textContent = this.formatFileSize(this.finalZipBlob.size);
-            const ratio = ((originalSize - this.finalZipBlob.size) / originalSize * 100).toFixed(1);
-            document.getElementById('compressionRatio').textContent = `${ratio}%`;
+            this.el.compressedSize.textContent = this.formatFileSize(this.finalZipBlob.size);
+            const ratio = ((this.totalOriginalSize - this.finalZipBlob.size) / this.totalOriginalSize * 100).toFixed(1);
+            this.el.compressionRatio.textContent = `${ratio}%`;
         }
     }
 
-    showProcessingSection() {
-        document.getElementById('uploadSection').style.display = 'none';
-        document.getElementById('processingSection').style.display = 'block';
-        document.getElementById('resultSection').style.display = 'none';
-    }
+    showResults(finalSize) {
+        const spaceSaved = this.totalOriginalSize - finalSize;
+        const savingsPercent = ((spaceSaved / this.totalOriginalSize) * 100).toFixed(1);
 
-    showResultSection(finalSize) {
-        const originalSize = this.imageFiles.reduce((sum, img) => sum + img.originalSize, 0);
-        const spaceSaved = originalSize - finalSize;
-        const savingsPercent = ((spaceSaved / originalSize) * 100).toFixed(1);
+        this.el.finalSize.textContent = this.formatFileSize(finalSize);
+        this.el.spaceSaved.textContent = `${this.formatFileSize(spaceSaved)} (${savingsPercent}%)`;
 
-        document.getElementById('finalSize').textContent = this.formatFileSize(finalSize);
-        document.getElementById('spaceSaved').textContent = `${this.formatFileSize(spaceSaved)} (${savingsPercent}%)`;
-
-        document.getElementById('processingSection').style.display = 'none';
-        document.getElementById('resultSection').style.display = 'block';
+        this.showSection('resultSection');
     }
 
     downloadCompressedZip() {
-        if (this.finalZipBlob) {
-            const url = URL.createObjectURL(this.finalZipBlob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = 'compressed_images.zip';
-            document.body.appendChild(a);
-            a.click();
-            document.body.removeChild(a);
-            URL.revokeObjectURL(url);
-        }
+        if (!this.finalZipBlob) return;
+
+        const url = URL.createObjectURL(this.finalZipBlob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'compressed_images.zip';
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(url);
     }
 
     resetApplication() {
@@ -467,10 +482,8 @@ class ImageCompressor {
         this.totalImages = 0;
         this.processedImages = 0;
 
-        document.getElementById('fileInput').value = '';
-        document.getElementById('uploadSection').style.display = 'block';
-        document.getElementById('processingSection').style.display = 'none';
-        document.getElementById('resultSection').style.display = 'none';
+        this.el.fileInput.value = '';
+        this.showSection('uploadSection');
     }
 
     showError(message) {
@@ -488,36 +501,31 @@ class ImageCompressor {
     }
 }
 
-// Initialize the application when the page loads
+// Initialize the application
 document.addEventListener('DOMContentLoaded', () => {
-    new ImageCompressor();
-});
+    const app = new ImageCompressor();
 
-// Add some utility functions for better user experience
-window.addEventListener('beforeunload', (e) => {
-    const processingSection = document.getElementById('processingSection');
-    if (processingSection && processingSection.style.display !== 'none') {
-        e.preventDefault();
-        e.returnValue = 'Image compression is in progress. Are you sure you want to leave?';
-    }
-});
-
-// Add keyboard shortcuts
-document.addEventListener('keydown', (e) => {
-    if (e.ctrlKey || e.metaKey) {
-        switch (e.key) {
-            case 'o':
-                e.preventDefault();
-                document.getElementById('fileInput').click();
-                break;
-            case 's':
-                e.preventDefault();
-                const downloadBtn = document.getElementById('downloadBtn');
-                if (downloadBtn.style.display !== 'none') {
-                    downloadBtn.click();
-                }
-                break;
+    window.addEventListener('beforeunload', (e) => {
+        if (app.el.processingSection.style.display !== 'none') {
+            e.preventDefault();
+            e.returnValue = 'Image compression is in progress. Are you sure you want to leave?';
         }
-    }
-});
+    });
 
+    document.addEventListener('keydown', (e) => {
+        if (e.ctrlKey || e.metaKey) {
+            switch (e.key) {
+                case 'o':
+                    e.preventDefault();
+                    app.el.fileInput.click();
+                    break;
+                case 's':
+                    e.preventDefault();
+                    if (app.el.downloadBtn.offsetParent !== null) {
+                        app.el.downloadBtn.click();
+                    }
+                    break;
+            }
+        }
+    });
+});
