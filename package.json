@@ -1,6 +1,6 @@
 {
   "name": "zip-to-size",
-  "version": "0.0.12",
+  "version": "0.0.13",
   "description": "Compress images inside ZIP, RAR, 7z and other archives to a target file size — entirely in the browser.",
   "type": "module",
   "scripts": {
