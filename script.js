@@ -1,3 +1,7 @@
+import { Archive } from './libarchive.js';
+
+Archive.init({ workerUrl: './worker-bundle.js' });
+
 // Compression algorithm constants
 const CONFIG = {
     ZIP_OVERHEAD_FACTOR: 0.15,
@@ -96,23 +100,38 @@ class ImageCompressor {
         this.el.newFileBtn.addEventListener('click', this.resetApplication.bind(this));
     }
 
+    outputFileName(inputName) {
+        const dot = inputName.lastIndexOf('.');
+        const base = dot === -1 ? inputName : inputName.substring(0, dot);
+        return `${base}-compressed.zip`;
+    }
+
     async processFile(file) {
-        if (!file.name.toLowerCase().endsWith('.zip')) {
-            this.showError('Please select a ZIP file.');
+        const name = file.name.toLowerCase();
+        const isZip = name.endsWith('.zip');
+        const supported = ['.zip', '.rar', '.7z', '.tar', '.gz', '.bz2', '.xz'].some(ext => name.endsWith(ext));
+
+        if (!supported) {
+            this.showError('Unsupported file format. Please select a ZIP, RAR, 7z, or TAR archive.');
             return;
         }
 
         try {
             this.showSection('processingSection');
-            this.updateProgress('Loading ZIP file...', 0);
+            this.updateProgress('Loading archive...', 0);
+            this.outputName = this.outputFileName(file.name);
 
-            const arrayBuffer = await file.arrayBuffer();
-            this.originalZip = await JSZip.loadAsync(arrayBuffer);
+            if (isZip) {
+                const arrayBuffer = await file.arrayBuffer();
+                this.originalZip = await JSZip.loadAsync(arrayBuffer);
+            } else {
+                this.originalZip = await this.loadViaLibarchive(file);
+            }
 
             await this.extractImageFiles();
 
             if (this.imageFiles.length === 0) {
-                this.showError('No image files found in the ZIP archive.');
+                this.showError('No image files found in the archive.');
                 return;
             }
 
@@ -121,8 +140,27 @@ class ImageCompressor {
             await this.compressImages();
         } catch (error) {
             console.error('Error processing file:', error);
-            this.showError('Error processing the ZIP file. Please try again.');
+            this.showError('Error processing the archive. Please try again.');
         }
+    }
+
+    async loadViaLibarchive(file) {
+        this.updateProgress('Extracting archive...', 2);
+        const archive = await Archive.open(file);
+        // extractFiles() extracts all entries and returns nested { path: File } object.
+        // getFilesArray() then flattens it to [{ file: File, path: "dir/" }].
+        // Must call extractFiles() first so entries are File objects, not ArchiveReader stubs.
+        await archive.extractFiles();
+        const entries = await archive.getFilesArray();
+        const zip = new JSZip();
+
+        await Promise.all(entries.map(async ({ file: entry, path }) => {
+            if (entry instanceof File) {
+                zip.file(path + entry.name, await entry.arrayBuffer());
+            }
+        }));
+
+        return zip;
     }
 
     get totalOriginalSize() {
@@ -291,9 +329,17 @@ class ImageCompressor {
         const compressedImages = [];
         this.processedImages = 0;
 
+        const avgSize = this.totalOriginalSize / this.imageFiles.length;
+
         for (const imageFile of this.imageFiles) {
+            // Files larger than average get a more aggressive per-file ratio so they
+            // shrink toward the average first; smaller files get a gentler ratio.
+            // Once sizes are roughly equal the per-file ratio converges to the global one.
+            const sizeRatio = avgSize / imageFile.originalSize; // < 1 for big files, > 1 for small
+            const perFileRatio = Math.min(ratio, ratio * sizeRatio);
+
             try {
-                const compressedData = await this.compressImage(imageFile, ratio);
+                const compressedData = await this.compressImage(imageFile, perFileRatio);
                 compressedImages.push({ name: imageFile.name, data: compressedData });
             } catch (error) {
                 console.error(`Failed to compress ${imageFile.name}:`, error);
@@ -432,7 +478,7 @@ class ImageCompressor {
         const url = URL.createObjectURL(this.finalZipBlob);
         const a = document.createElement('a');
         a.href = url;
-        a.download = 'compressed_images.zip';
+        a.download = this.outputName;
         document.body.appendChild(a);
         a.click();
         a.remove();
@@ -442,6 +488,7 @@ class ImageCompressor {
     resetApplication() {
         this.originalZip = null;
         this.finalZipBlob = null;
+        this.outputName = null;
         this.imageFiles = [];
         this.totalImages = 0;
         this.processedImages = 0;

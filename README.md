@@ -1,15 +1,16 @@
-# Zip Image Compressor
+# Archive Image Compressor
 
-A modern, client-side image compression tool that allows users to upload ZIP files containing images and compress them to a target size while maintaining proportions.
+A modern, client-side image compression tool that allows users to upload ZIP, RAR, 7z, TAR and other archives containing images and compress them to a target size while maintaining proportions.
 
 Initial commit generated in Manus (https://manus.ai) and improved upon
 
 ## 🌟 Features
 
 - **Client-side Processing**: All compression happens in your browser - no server uploads required
-- **ZIP File Support**: Upload ZIP files containing multiple images
-- **Smart Compression**: Iteratively adjusts image dimensions and quality to fit within the target ZIP size (converges to 80–100% of target)
+- **Multi-format Archive Support**: Upload ZIP, RAR, 7z, TAR, GZ, BZ2, XZ archives containing images
+- **Smart Compression**: Iteratively adjusts image dimensions and quality to fit within the target ZIP size (converges to 80–100% of target); prioritizes larger files first
 - **Format Preservation**: Maintains original file formats (JPEG, PNG, WebP). GIF and BMP are converted to PNG (Canvas API limitation)
+- **Always outputs ZIP**: Output is always a standard ZIP file named `<original>-compressed.zip`
 - **Modern UI**: Clean, responsive design with smooth animations
 - **Real-time Progress**: Live progress tracking and compression statistics
 - **Mobile Friendly**: Fully responsive design that works on all devices
@@ -22,7 +23,8 @@ The application is deployed and available at: **https://ricardo.heptasoft.com/zi
 
 - **Frontend**: HTML5, CSS3, JavaScript (ES6+)
 - **Libraries**: 
-  - JSZip for ZIP file handling
+  - JSZip for ZIP input and output
+  - libarchive.js (WebAssembly) for reading RAR, 7z, TAR and other formats
   - Canvas API for image compression
   - Font Awesome for icons
   - Google Fonts (Inter)
@@ -30,8 +32,8 @@ The application is deployed and available at: **https://ricardo.heptasoft.com/zi
 
 ## 📋 How It Works
 
-1. **Upload**: Drag and drop or click to select a ZIP file containing images
-2. **Configure**: Set your target ZIP file size (default: 2.5 MB)
+1. **Upload**: Drag and drop or click to select an archive (ZIP, RAR, 7z, TAR…) containing images
+2. **Configure**: Set your target ZIP file size (default: 3.5 MB)
 3. **Process**: The tool iteratively compresses images to converge on the target size
 4. **Download**: Get your compressed ZIP file with optimized images
 
@@ -44,16 +46,17 @@ The tool uses an iterative convergence approach:
 1. **Extraction**: Reads all images from the ZIP file and records their sizes
 2. **Skip check**: If images already fit the target, re-zips at max compression and finishes immediately
 3. **Initial ratio**: Calculates a starting compression ratio (`target size / total image size`)
-4. **Iterative passes**: Each pass compresses every image simultaneously — scaling dimensions by `sqrt(ratio)` and adjusting JPEG/WebP quality proportionally — then test-zips the result and checks its size
+4. **Iterative passes**: Each pass compresses every image — scaling dimensions by `sqrt(ratio)` and adjusting JPEG/WebP quality proportionally — with larger-than-average files receiving a more aggressive per-file ratio to equalize sizes first; then test-zips the result and checks its size
 5. **Ratio adjustment**: If the result is over target, the ratio is reduced by 15%; if under, it is increased by 10%
 6. **Convergence**: The loop stops when the result lands between 80–100% of target, or after 3 consecutive failed iterations
 7. **Final assembly**: Re-zips the best result at maximum compression level
 
 ### Supported Formats
 
-- **Input**: ZIP files containing images
-- **Image Formats (input)**: JPEG, PNG, GIF, BMP, WebP
-- **Image Formats (output)**: JPEG, PNG, WebP preserved as-is; GIF and BMP converted to PNG
+- **Archive input**: ZIP, RAR (v4/v5), 7z, TAR, GZ, BZ2, XZ and more (via libarchive WebAssembly)
+- **Archive output**: always ZIP (`<original>-compressed.zip`)
+- **Image formats (input)**: JPEG, PNG, GIF, BMP, WebP
+- **Image formats (output)**: JPEG, PNG, WebP preserved as-is; GIF and BMP converted to PNG
 
 ## 🎨 Design Features
 
@@ -121,6 +124,9 @@ zip-images-resizer/
 ├── index.html                          # Main HTML file
 ├── styles.css                          # CSS styles and animations
 ├── script.js                           # JavaScript functionality
+├── libarchive.js                       # libarchive.js (local copy)
+├── worker-bundle.js                    # libarchive WebWorker bundle (local copy)
+├── libarchive.wasm                     # libarchive WebAssembly binary (local copy)
 ├── script.test.js                      # Unit tests (Vitest + jsdom)
 ├── compression.integration.test.js     # Integration tests
 ├── vitest.config.js                    # Vitest configuration
@@ -144,7 +150,8 @@ This project is open source and available under the MIT License.
 
 ## 🙏 Acknowledgments
 
-- JSZip library for ZIP file handling
+- JSZip library for ZIP output
+- libarchive.js for multi-format archive reading (WebAssembly port of libarchive)
 - Font Awesome for beautiful icons
 - Google Fonts for the Inter typeface
 - Canvas API for image processing capabilities

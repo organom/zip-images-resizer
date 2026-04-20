@@ -6,7 +6,9 @@ import JSZip from 'jszip';
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const scriptSrc = readFileSync(resolve(__dirname, 'script.js'), 'utf8');
+const scriptSrc = readFileSync(resolve(__dirname, 'script.js'), 'utf8')
+    .replaceAll(/^import\s.*?from\s+['"].*?['"];?\s*\n?/gm, '')
+    .replaceAll(/^Archive\.init\(.*?\);\s*\n?/gm, '');
 
 // ─── Minimal valid JPEG (1×1 red pixel, 141 bytes) ───────────────────────────
 const JPEG_1X1 = Uint8Array.from([
@@ -49,7 +51,7 @@ async function buildTestZip(imageCount, paddingBytesEach) {
 const DOM_HTML = `
     <div id="uploadArea"></div>
     <input id="fileInput" type="file" />
-    <input id="maxSize" type="number" value="2.5" />
+    <input id="maxSize" type="number" value="3.5" />
     <button id="downloadBtn"></button>
     <button id="newFileBtn"></button>
     <span id="progressText"></span>
@@ -128,6 +130,7 @@ const sandbox = Object.create(globalThis);
 sandbox.JSZip = JSZip;
 sandbox.Image = MockImage;
 sandbox.document = mockedDocument;
+sandbox.Archive = { init: () => {} };
 // JSZip 3.x doesn't support Node's Blob — shim Blob as a function returning
 // a Uint8Array so zip.file() accepts the result.
 sandbox.Blob = function BlobShim(parts) {
@@ -162,7 +165,7 @@ vm.runInContext(wrapped, sandbox);
 const { ImageCompressor, CONFIG } = sandbox;
 
 // ─── Helper: create compressor with DOM reset ─────────────────────────────────
-function makeCompressor(maxSizeMB = 2.5) {
+function makeCompressor(maxSizeMB = 3.5) {
     document.body.innerHTML = DOM_HTML;
     document.getElementById('maxSize').value = String(maxSizeMB);
     return new ImageCompressor();

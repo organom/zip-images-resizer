@@ -5,7 +5,9 @@ import vm from 'node:vm';
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const scriptSrc = readFileSync(resolve(__dirname, 'script.js'), 'utf8');
+const scriptSrc = readFileSync(resolve(__dirname, 'script.js'), 'utf8')
+    .replaceAll(/^import\s.*?from\s+['"].*?['"];?\s*\n?/gm, '')
+    .replaceAll(/^Archive\.init\(.*?\);\s*\n?/gm, '');
 
 const DOM_HTML = `
     <div id="uploadArea"></div>
@@ -36,6 +38,7 @@ document.body.innerHTML = DOM_HTML;
 
 const sandbox = Object.create(globalThis);
 sandbox.window = sandbox;
+sandbox.Archive = { init: () => {} };
 vm.createContext(sandbox);
 
 // Wrap in an IIFE that assigns everything to the sandbox explicitly
@@ -360,6 +363,6 @@ describe('processFile', () => {
     it('rejects non-ZIP files', async () => {
         const file = new File(['data'], 'photo.jpg', { type: 'image/jpeg' });
         await app.processFile(file);
-        expect(app.showError).toHaveBeenCalledWith('Please select a ZIP file.');
+        expect(app.showError).toHaveBeenCalledWith('Unsupported file format. Please select a ZIP, RAR, 7z, or TAR archive.');
     });
 });
