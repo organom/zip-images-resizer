@@ -63,6 +63,7 @@ body {
     justify-content: center;
     gap: 15px;
     margin-bottom: 15px;
+    text-decoration: none;
 }
 
 .logo i {
@@ -347,6 +348,7 @@ body {
     display: flex;
     justify-content: center;
     align-items: center;
+    flex: 1;
     min-height: 400px;
 }
 

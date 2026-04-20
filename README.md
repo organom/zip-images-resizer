@@ -1,4 +1,4 @@
-# Archive Image Compressor
+# ZipToSize
 
 A modern, client-side image compression tool that allows users to upload ZIP, RAR, 7z, TAR and other archives containing images and compress them to a target size while maintaining proportions.
 
@@ -17,7 +17,7 @@ Initial commit generated in Manus (https://manus.ai) and improved upon
 
 ## 🚀 Live Demo
 
-The application is deployed and available at: **https://ricardo.heptasoft.com/zip-images-resizer/**
+The application is deployed and available at: **https://ricardo.heptasoft.com/zip-to-size/**
 
 ## 🛠️ Technology Stack
 
@@ -120,7 +120,7 @@ The suite includes:
 ## 📁 Project Structure
 
 ```
-zip-images-resizer/
+zip-to-size/
 ├── index.html                          # Main HTML file
 ├── styles.css                          # CSS styles and animations
 ├── script.js                           # JavaScript functionality
