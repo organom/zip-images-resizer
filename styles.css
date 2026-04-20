@@ -297,7 +297,7 @@ body {
 
 .input-suffix {
     position: absolute;
-    right: 40px;
+    right: 25px;
     color: var(--text-secondary);
     font-weight: 500;
     pointer-events: none;
