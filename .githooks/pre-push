@@ -4,6 +4,12 @@ set -e
 PKG="package.json"
 HTML="index.html"
 
+# Skip if the last commit is already a version bump (avoid looping)
+last_msg=$(git log -1 --format="%s")
+if [[ "${last_msg}" == chore:\ bump\ version\ to\ * ]]; then
+    exit 0
+fi
+
 # Read current version from package.json
 current=$(node -p "require('./${PKG}').version")
 
