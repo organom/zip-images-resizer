@@ -43,7 +43,7 @@ The application is deployed and available at: **https://ricardo.heptasoft.com/zi
 
 The tool uses an iterative convergence approach:
 
-1. **Extraction**: Reads all images from the ZIP file and records their sizes
+1. **Extraction**: Reads all images from the archive and records their sizes
 2. **Skip check**: If images already fit the target, re-zips at max compression and finishes immediately
 3. **Initial ratio**: Calculates a starting compression ratio (`target size / total image size`)
 4. **Iterative passes**: Each pass compresses every image — scaling dimensions by `sqrt(ratio)` and adjusting JPEG/WebP quality proportionally — with larger-than-average files receiving a more aggressive per-file ratio to equalize sizes first; then test-zips the result and checks its size
@@ -146,16 +146,16 @@ This project is designed to be simple and self-contained. If you'd like to contr
 
 ## 📄 License
 
-This project is open source and available under the MIT License.
+This project is open source and available under the GNU General Public License v3.0.
 
 ## 🙏 Acknowledgments
 
-- JSZip library for ZIP output
+- JSZip library for ZIP input and output
 - libarchive.js for multi-format archive reading (WebAssembly port of libarchive)
 - Font Awesome for beautiful icons
 - Google Fonts for the Inter typeface
 - Canvas API for image processing capabilities
-- Manus (https://manus.ai) for initial project scaffolding
+- [Manus](https://manus.ai) for initial project scaffolding
 - [Claude Code](https://claude.ai/code) for iterative improvements, test suite, and bug fixes
 
 ---
