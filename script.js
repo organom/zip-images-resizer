@@ -1,6 +1,5 @@
 // Compression algorithm constants
 const CONFIG = {
-    MAX_ITERATIONS: 8,
     ZIP_OVERHEAD_FACTOR: 0.15,
     MIN_COMPRESSION_RATIO: 0.05,
     QUALITY_MIN: 0.1,
@@ -26,7 +25,7 @@ const MIME_TYPES = {
     '.jpeg': 'image/jpeg',
     '.png': 'image/png',
     '.webp': 'image/webp',
-    // GIF and BMP are not supported by canvas.toBlob — fall back to PNG to preserve transparency
+    // GIF and BMP are not supported by canvas.toBlob — fall back to PNG
     '.gif': 'image/png',
     '.bmp': 'image/png',
 };
@@ -37,7 +36,6 @@ const IMAGE_EXTENSIONS = new Set(Object.keys(MIME_TYPES));
 const QUALITY_FORMATS = new Set(['image/jpeg', 'image/webp']);
 
 class ImageCompressor {
-    maxSizeMB = 2.5;
     originalZip = null;
     compressedZip = null;
     imageFiles = [];
@@ -67,6 +65,7 @@ class ImageCompressor {
             processingSection: document.getElementById('processingSection'),
             resultSection: document.getElementById('resultSection'),
         };
+        this.maxSizeMB = Number.parseFloat(this.el.maxSize.value) || 2.5;
         this.initializeEventListeners();
     }
 
@@ -78,7 +77,12 @@ class ImageCompressor {
         this.el.fileInput.addEventListener('change', this.handleFileSelect.bind(this));
 
         this.el.maxSize.addEventListener('change', (e) => {
-            this.maxSizeMB = Number.parseFloat(e.target.value);
+            const val = Number.parseFloat(e.target.value);
+            if (!Number.isNaN(val) && val >= 0.1 && val <= 50) {
+                this.maxSizeMB = val;
+            } else {
+                e.target.value = this.maxSizeMB;
+            }
         });
 
         this.el.downloadBtn.addEventListener('click', this.downloadCompressedZip.bind(this));
@@ -170,7 +174,9 @@ class ImageCompressor {
                 continue;
             }
 
-            const extension = filename.toLowerCase().substring(filename.lastIndexOf('.'));
+            const dotIndex = filename.lastIndexOf('.');
+            if (dotIndex === -1) continue;
+            const extension = filename.toLowerCase().substring(dotIndex);
             if (!IMAGE_EXTENSIONS.has(extension)) {
                 continue;
             }
@@ -228,10 +234,7 @@ class ImageCompressor {
     async runCompressionIteration(compressionRatio, iteration) {
         const ratio = Math.max(compressionRatio, CONFIG.MIN_COMPRESSION_RATIO);
 
-        this.updateProgress(
-            `Compression pass ${iteration + 1}/${CONFIG.MAX_ITERATIONS}...`,
-            10 + (iteration * 70 / CONFIG.MAX_ITERATIONS)
-        );
+        this.updateProgress(`Compression iteration ${iteration + 1}...`, Math.min(10 + iteration * 8, 80));
 
         console.log(`Iteration ${iteration + 1}: ratio=${ratio.toFixed(3)}`);
 
@@ -252,19 +255,22 @@ class ImageCompressor {
         if (await this.trySkipCompression(targetZipSizeBytes)) return;
 
         const targetTotalImageSize = targetZipSizeBytes * (1 - CONFIG.ZIP_OVERHEAD_FACTOR);
-        let compressionRatio = targetTotalImageSize / this.totalOriginalSize;
+        let compressionRatio = this.totalOriginalSize > 0
+            ? targetTotalImageSize / this.totalOriginalSize
+            : CONFIG.MIN_COMPRESSION_RATIO;
         let bestZip = null;
         let bestSize = Infinity;
 
-        this.imageFiles.sort((a, b) => a.originalSize - b.originalSize);
-
-        for (let iteration = 0; iteration < CONFIG.MAX_ITERATIONS; iteration++) {
+        let consecutiveFailures = 0;
+        for (let iteration = 0; ; iteration++) {
             let result;
             try {
                 result = await this.runCompressionIteration(compressionRatio, iteration);
+                consecutiveFailures = 0;
             } catch (error) {
                 console.error(`Failed ZIP generation in iteration ${iteration + 1}:`, error);
-                if (iteration === CONFIG.MAX_ITERATIONS - 1) throw error;
+                consecutiveFailures++;
+                if (consecutiveFailures >= 3) break;
                 compressionRatio *= CONFIG.RATIO_DECREASE;
                 continue;
             }
@@ -318,10 +324,9 @@ class ImageCompressor {
             this.processedImages++;
             this.updateStats();
 
-            const iterationProgress = (this.processedImages / this.totalImages) * (70 / CONFIG.MAX_ITERATIONS);
             this.updateProgress(
                 `Processing ${imageFile.name.split('/').pop().substring(0, 30)}...`,
-                10 + (iteration * 70 / CONFIG.MAX_ITERATIONS) + iterationProgress
+                Math.min(10 + iteration * 8, 80)
             );
         }
 
@@ -373,19 +378,31 @@ class ImageCompressor {
                     const canvas = document.createElement('canvas');
                     const ctx = canvas.getContext('2d');
 
-                    const scaleFactor = Math.sqrt(Math.max(compressionRatio, CONFIG.MIN_COMPRESSION_RATIO));
-                    let newWidth = Math.max(CONFIG.MIN_DIMENSION, Math.floor(img.width * scaleFactor));
-                    let newHeight = Math.max(CONFIG.MIN_DIMENSION, Math.floor(img.height * scaleFactor));
+                    const scaleFactor = Math.sqrt(compressionRatio);
+                    let newWidth = Math.floor(img.width * scaleFactor);
+                    let newHeight = Math.floor(img.height * scaleFactor);
 
-                    // Clamp to maximum dimensions while preserving aspect ratio
+                    const aspectRatio = img.width / img.height;
+
+                    // Clamp to max dimensions while preserving aspect ratio
                     if (newWidth > CONFIG.MAX_DIMENSION || newHeight > CONFIG.MAX_DIMENSION) {
-                        const aspectRatio = img.width / img.height;
                         if (aspectRatio > 1) {
-                            newWidth = Math.min(newWidth, CONFIG.MAX_DIMENSION);
-                            newHeight = Math.floor(newWidth / aspectRatio);
+                            newWidth = CONFIG.MAX_DIMENSION;
+                            newHeight = Math.floor(CONFIG.MAX_DIMENSION / aspectRatio);
                         } else {
-                            newHeight = Math.min(newHeight, CONFIG.MAX_DIMENSION);
-                            newWidth = Math.floor(newHeight * aspectRatio);
+                            newHeight = CONFIG.MAX_DIMENSION;
+                            newWidth = Math.floor(CONFIG.MAX_DIMENSION * aspectRatio);
+                        }
+                    }
+
+                    // Apply minimum dimension floor after all ratio-preserving logic
+                    if (newWidth < CONFIG.MIN_DIMENSION || newHeight < CONFIG.MIN_DIMENSION) {
+                        if (aspectRatio > 1) {
+                            newHeight = CONFIG.MIN_DIMENSION;
+                            newWidth = Math.floor(CONFIG.MIN_DIMENSION * aspectRatio);
+                        } else {
+                            newWidth = CONFIG.MIN_DIMENSION;
+                            newHeight = Math.floor(CONFIG.MIN_DIMENSION / aspectRatio);
                         }
                     }
 
@@ -446,17 +463,23 @@ class ImageCompressor {
 
         if (this.finalZipBlob) {
             this.el.compressedSize.textContent = this.formatFileSize(this.finalZipBlob.size);
-            const ratio = ((this.totalOriginalSize - this.finalZipBlob.size) / this.totalOriginalSize * 100).toFixed(1);
+            const ratio = this.totalOriginalSize > 0
+                ? ((this.totalOriginalSize - this.finalZipBlob.size) / this.totalOriginalSize * 100).toFixed(1)
+                : '0.0';
             this.el.compressionRatio.textContent = `${ratio}%`;
         }
     }
 
     showResults(finalSize) {
         const spaceSaved = this.totalOriginalSize - finalSize;
-        const savingsPercent = ((spaceSaved / this.totalOriginalSize) * 100).toFixed(1);
+        const savingsPercent = this.totalOriginalSize > 0
+            ? ((spaceSaved / this.totalOriginalSize) * 100).toFixed(1)
+            : '0.0';
 
         this.el.finalSize.textContent = this.formatFileSize(finalSize);
-        this.el.spaceSaved.textContent = `${this.formatFileSize(spaceSaved)} (${savingsPercent}%)`;
+        this.el.spaceSaved.textContent = spaceSaved >= 0
+            ? `${this.formatFileSize(spaceSaved)} (${savingsPercent}%)`
+            : `+${this.formatFileSize(-spaceSaved)} (ZIP overhead)`;
 
         this.showSection('resultSection');
     }

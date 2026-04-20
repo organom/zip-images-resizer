@@ -1,0 +1,28 @@
+{
+  "name": "zip-images-resizer",
+  "version": "1.0.0",
+  "description": "A modern, client-side image compression tool that allows users to upload ZIP files containing images and compress them to a target size while maintaining proportions.",
+  "type": "module",
+  "scripts": {
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/organom/zip-images-resizer.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/organom/zip-images-resizer/issues"
+  },
+  "homepage": "https://github.com/organom/zip-images-resizer#readme",
+  "devDependencies": {
+    "@vitest/coverage-v8": "^4.1.4",
+    "jsdom": "^29.0.2",
+    "jszip": "^3.10.1",
+    "vitest": "^4.1.4"
+  }
+}

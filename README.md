@@ -1,6 +1,6 @@
-# Image Compressor
+# Zip Image Compressor
 
-A modern, client-side image compression tool that allows users to upload ZIP files containing images and compress them to a target size while maintaining proportions and file formats.
+A modern, client-side image compression tool that allows users to upload ZIP files containing images and compress them to a target size while maintaining proportions.
 
 Initial commit generated in Manus (https://manus.ai) and improved upon
 
@@ -8,15 +8,15 @@ Initial commit generated in Manus (https://manus.ai) and improved upon
 
 - **Client-side Processing**: All compression happens in your browser - no server uploads required
 - **ZIP File Support**: Upload ZIP files containing multiple images
-- **Smart Compression**: Automatically adjusts image dimensions to meet target file size
-- **Format Preservation**: Maintains original file formats (JPEG, PNG, GIF, BMP, WebP)
+- **Smart Compression**: Iteratively adjusts image dimensions and quality to fit within the target ZIP size (converges to 80–100% of target)
+- **Format Preservation**: Maintains original file formats (JPEG, PNG, WebP). GIF and BMP are converted to PNG (Canvas API limitation)
 - **Modern UI**: Clean, responsive design with smooth animations
 - **Real-time Progress**: Live progress tracking and compression statistics
 - **Mobile Friendly**: Fully responsive design that works on all devices
 
 ## 🚀 Live Demo
 
-The application is deployed and available at: **https://muiwvwct.manus.space**
+The application is deployed and available at: **https://ricardo.heptasoft.com/zip-images-resizer/**
 
 ## 🛠️ Technology Stack
 
@@ -32,27 +32,28 @@ The application is deployed and available at: **https://muiwvwct.manus.space**
 
 1. **Upload**: Drag and drop or click to select a ZIP file containing images
 2. **Configure**: Set your target ZIP file size (default: 2.5 MB)
-3. **Process**: The tool analyzes images and applies progressive compression
+3. **Process**: The tool iteratively compresses images to converge on the target size
 4. **Download**: Get your compressed ZIP file with optimized images
 
 ## 🔧 Technical Details
 
 ### Compression Algorithm
 
-The tool uses a sophisticated multi-pass compression approach:
+The tool uses an iterative convergence approach:
 
-1. **Analysis Phase**: Extracts and analyzes all images from the ZIP file
-2. **Target Calculation**: Determines optimal compression ratio based on target size
-3. **Progressive Compression**: Applies iterative compression with quality adjustments
-4. **Dimension Scaling**: Reduces image dimensions while maintaining aspect ratios
-5. **Quality Optimization**: Adjusts JPEG quality and PNG optimization
-6. **Final Assembly**: Creates new ZIP file with compressed images
+1. **Extraction**: Reads all images from the ZIP file and records their sizes
+2. **Skip check**: If images already fit the target, re-zips at max compression and finishes immediately
+3. **Initial ratio**: Calculates a starting compression ratio (`target size / total image size`)
+4. **Iterative passes**: Each pass compresses every image simultaneously — scaling dimensions by `sqrt(ratio)` and adjusting JPEG/WebP quality proportionally — then test-zips the result and checks its size
+5. **Ratio adjustment**: If the result is over target, the ratio is reduced by 15%; if under, it is increased by 10%
+6. **Convergence**: The loop stops when the result lands between 80–100% of target, or after 3 consecutive failed iterations
+7. **Final assembly**: Re-zips the best result at maximum compression level
 
 ### Supported Formats
 
 - **Input**: ZIP files containing images
-- **Image Formats**: JPEG, PNG, GIF, BMP, WebP
-- **Output**: ZIP file with compressed images in original formats
+- **Image Formats (input)**: JPEG, PNG, GIF, BMP, WebP
+- **Image Formats (output)**: JPEG, PNG, WebP preserved as-is; GIF and BMP converted to PNG
 
 ## 🎨 Design Features
 
@@ -60,12 +61,12 @@ The tool uses a sophisticated multi-pass compression approach:
 - **Smooth Animations**: Floating icons, progress bars with shimmer effects
 - **Hover Effects**: Interactive elements with smooth transitions
 - **Responsive Layout**: Adapts to desktop, tablet, and mobile screens
-- **Accessibility**: Keyboard shortcuts and screen reader friendly
+- **Accessibility**: Keyboard shortcuts for common actions
 
 ## ⌨️ Keyboard Shortcuts
 
 - `Ctrl/Cmd + O`: Open file dialog
-- `Ctrl/Cmd + S`: Download compressed file (when available)
+- `Ctrl/Cmd + S`: Download compressed file (only when the download button is visible)
 
 ## 🔒 Privacy & Security
 
@@ -93,14 +94,38 @@ This is a static website that can be hosted on:
 
 Simply upload the files to your hosting provider - no server configuration required.
 
+## 🧪 Testing
+
+Install dependencies and run the test suite:
+
+```bash
+npm install
+npm test
+```
+
+Other test commands:
+
+```bash
+npm run test:watch      # watch mode
+npm run test:coverage   # with coverage report
+```
+
+The suite includes:
+- **Unit tests** (`script.test.js`) — pure logic: formatting, path filtering, best-result selection, input validation, DOM state
+- **Integration tests** (`compression.integration.test.js`) — full compression loop against a real ZIP, asserting the final size lands within 80–100% of the target
+
 ## 📁 Project Structure
 
 ```
-image-compressor/
-├── index.html          # Main HTML file
-├── styles.css          # CSS styles and animations
-├── script.js           # JavaScript functionality
-└── README.md           # This file
+zip-images-resizer/
+├── index.html                          # Main HTML file
+├── styles.css                          # CSS styles and animations
+├── script.js                           # JavaScript functionality
+├── script.test.js                      # Unit tests (Vitest + jsdom)
+├── compression.integration.test.js     # Integration tests
+├── vitest.config.js                    # Vitest configuration
+├── package.json                        # Node dependencies (dev/test only)
+└── README.md                           # This file
 ```
 
 ## 🤝 Contributing
@@ -124,6 +149,7 @@ This project is open source and available under the MIT License.
 - Google Fonts for the Inter typeface
 - Canvas API for image processing capabilities
 - Manus (https://manus.ai) for initial project scaffolding
+- [Claude Code](https://claude.ai/code) for iterative improvements, test suite, and bug fixes
 
 ---
 
