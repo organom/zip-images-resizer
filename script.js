@@ -37,7 +37,6 @@ const QUALITY_FORMATS = new Set(['image/jpeg', 'image/webp']);
 
 class ImageCompressor {
     originalZip = null;
-    compressedZip = null;
     imageFiles = [];
     totalImages = 0;
     processedImages = 0;
@@ -71,10 +70,18 @@ class ImageCompressor {
 
     initializeEventListeners() {
         this.el.uploadArea.addEventListener('click', () => this.el.fileInput.click());
-        this.el.uploadArea.addEventListener('dragover', this.handleDragOver.bind(this));
-        this.el.uploadArea.addEventListener('dragleave', this.handleDragLeave.bind(this));
-        this.el.uploadArea.addEventListener('drop', this.handleDrop.bind(this));
-        this.el.fileInput.addEventListener('change', this.handleFileSelect.bind(this));
+        this.el.uploadArea.addEventListener('dragover', (e) => { e.preventDefault(); this.el.uploadArea.classList.add('dragover'); });
+        this.el.uploadArea.addEventListener('dragleave', (e) => { e.preventDefault(); this.el.uploadArea.classList.remove('dragover'); });
+        this.el.uploadArea.addEventListener('drop', (e) => {
+            e.preventDefault();
+            this.el.uploadArea.classList.remove('dragover');
+            const file = e.dataTransfer.files[0];
+            if (file) this.processFile(file);
+        });
+        this.el.fileInput.addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (file) this.processFile(file);
+        });
 
         this.el.maxSize.addEventListener('change', (e) => {
             const val = Number.parseFloat(e.target.value);
@@ -87,32 +94,6 @@ class ImageCompressor {
 
         this.el.downloadBtn.addEventListener('click', this.downloadCompressedZip.bind(this));
         this.el.newFileBtn.addEventListener('click', this.resetApplication.bind(this));
-    }
-
-    handleDragOver(e) {
-        e.preventDefault();
-        this.el.uploadArea.classList.add('dragover');
-    }
-
-    handleDragLeave(e) {
-        e.preventDefault();
-        this.el.uploadArea.classList.remove('dragover');
-    }
-
-    handleDrop(e) {
-        e.preventDefault();
-        this.el.uploadArea.classList.remove('dragover');
-        const files = e.dataTransfer.files;
-        if (files.length > 0) {
-            this.processFile(files[0]);
-        }
-    }
-
-    handleFileSelect(e) {
-        const file = e.target.files[0];
-        if (file) {
-            this.processFile(file);
-        }
     }
 
     async processFile(file) {
@@ -135,7 +116,8 @@ class ImageCompressor {
                 return;
             }
 
-            this.updateFileInfo(file.name, file.size);
+            this.el.fileName.textContent = file.name;
+            this.el.fileSize.textContent = this.formatFileSize(file.size);
             await this.compressImages();
         } catch (error) {
             console.error('Error processing file:', error);
@@ -207,7 +189,6 @@ class ImageCompressor {
 
         if (finalBlob.size > targetZipSizeBytes) return false;
 
-        this.compressedZip = this.originalZip;
         this.finalZipBlob = finalBlob;
         this.processedImages = this.totalImages;
         this.updateProgress('Complete!', 100);
@@ -238,8 +219,9 @@ class ImageCompressor {
 
         console.log(`Iteration ${iteration + 1}: ratio=${ratio.toFixed(3)}`);
 
-        const compressedImages = await this.compressAllImages(ratio, iteration);
-        const testZip = this.buildZip(compressedImages);
+        const compressedImages = await this.compressAllImages(ratio);
+        const testZip = new JSZip();
+        for (const img of compressedImages) testZip.file(img.name, img.data);
 
         const zipBlob = await this.generateZipBlob(testZip, CONFIG.ZIP_TEST_LEVEL);
 
@@ -291,14 +273,11 @@ class ImageCompressor {
             }
         }
 
-        this.compressedZip = bestZip;
-        if (!this.compressedZip) {
-            throw new Error('Failed to create compressed ZIP');
-        }
+        if (!bestZip) throw new Error('Failed to create compressed ZIP');
 
         this.updateProgress('Finalizing...', 90);
 
-        const finalBlob = await this.generateZipBlob(this.compressedZip, CONFIG.ZIP_FINAL_LEVEL);
+        const finalBlob = await this.generateZipBlob(bestZip, CONFIG.ZIP_FINAL_LEVEL);
         this.finalZipBlob = finalBlob;
 
         console.log(`Final ZIP size: ${(finalBlob.size / 1024 / 1024).toFixed(2)} MB`);
@@ -308,7 +287,7 @@ class ImageCompressor {
         this.showResults(finalBlob.size);
     }
 
-    async compressAllImages(ratio, iteration) {
+    async compressAllImages(ratio) {
         const compressedImages = [];
         this.processedImages = 0;
 
@@ -323,22 +302,56 @@ class ImageCompressor {
 
             this.processedImages++;
             this.updateStats();
-
-            this.updateProgress(
-                `Processing ${imageFile.name.split('/').pop().substring(0, 30)}...`,
-                Math.min(10 + iteration * 8, 80)
-            );
         }
 
         return compressedImages;
     }
 
-    buildZip(compressedImages) {
-        const zip = new JSZip();
-        for (const img of compressedImages) {
-            zip.file(img.name, img.data);
+    clampDimensions(width, height) {
+        const aspect = width / height;
+        if (width > CONFIG.MAX_DIMENSION || height > CONFIG.MAX_DIMENSION) {
+            return aspect > 1
+                ? { w: CONFIG.MAX_DIMENSION, h: Math.floor(CONFIG.MAX_DIMENSION / aspect) }
+                : { w: Math.floor(CONFIG.MAX_DIMENSION * aspect), h: CONFIG.MAX_DIMENSION };
         }
-        return zip;
+        if (width < CONFIG.MIN_DIMENSION || height < CONFIG.MIN_DIMENSION) {
+            return aspect > 1
+                ? { w: Math.floor(CONFIG.MIN_DIMENSION * aspect), h: CONFIG.MIN_DIMENSION }
+                : { w: CONFIG.MIN_DIMENSION, h: Math.floor(CONFIG.MIN_DIMENSION / aspect) };
+        }
+        return { w: width, h: height };
+    }
+
+    drawAndExport(img, imageFile, compressionRatio, settle, fallback) {
+        try {
+            const canvas = document.createElement('canvas');
+            const ctx = canvas.getContext('2d');
+            const scale = Math.sqrt(compressionRatio);
+            const { w, h } = this.clampDimensions(Math.floor(img.width * scale), Math.floor(img.height * scale));
+
+            canvas.width = w;
+            canvas.height = h;
+            ctx.imageSmoothingEnabled = true;
+            ctx.imageSmoothingQuality = 'high';
+            ctx.drawImage(img, 0, 0, w, h);
+
+            const mimeType = MIME_TYPES[imageFile.extension] || 'image/jpeg';
+            const quality = QUALITY_FORMATS.has(mimeType)
+                ? Math.max(CONFIG.QUALITY_MIN, Math.min(CONFIG.QUALITY_MAX, compressionRatio * CONFIG.QUALITY_MULTIPLIER))
+                : undefined;
+
+            canvas.toBlob((resultBlob) => {
+                if (resultBlob) {
+                    settle(resultBlob);
+                } else {
+                    console.warn(`Failed to create blob for ${imageFile.name}, using original`);
+                    fallback();
+                }
+            }, mimeType, quality);
+        } catch (error) {
+            console.error(`Error processing ${imageFile.name}:`, error);
+            fallback();
+        }
     }
 
     compressImage(imageFile, compressionRatio) {
@@ -363,8 +376,7 @@ class ImageCompressor {
             let blobUrl = null;
 
             try {
-                const blob = new Blob([imageFile.originalData]);
-                blobUrl = URL.createObjectURL(blob);
+                blobUrl = URL.createObjectURL(new Blob([imageFile.originalData]));
             } catch (error) {
                 console.error(`Error creating blob URL for ${imageFile.name}:`, error);
                 fallback();
@@ -372,76 +384,11 @@ class ImageCompressor {
             }
 
             const img = new Image();
-
-            img.onload = () => {
-                try {
-                    const canvas = document.createElement('canvas');
-                    const ctx = canvas.getContext('2d');
-
-                    const scaleFactor = Math.sqrt(compressionRatio);
-                    let newWidth = Math.floor(img.width * scaleFactor);
-                    let newHeight = Math.floor(img.height * scaleFactor);
-
-                    const aspectRatio = img.width / img.height;
-
-                    // Clamp to max dimensions while preserving aspect ratio
-                    if (newWidth > CONFIG.MAX_DIMENSION || newHeight > CONFIG.MAX_DIMENSION) {
-                        if (aspectRatio > 1) {
-                            newWidth = CONFIG.MAX_DIMENSION;
-                            newHeight = Math.floor(CONFIG.MAX_DIMENSION / aspectRatio);
-                        } else {
-                            newHeight = CONFIG.MAX_DIMENSION;
-                            newWidth = Math.floor(CONFIG.MAX_DIMENSION * aspectRatio);
-                        }
-                    }
-
-                    // Apply minimum dimension floor after all ratio-preserving logic
-                    if (newWidth < CONFIG.MIN_DIMENSION || newHeight < CONFIG.MIN_DIMENSION) {
-                        if (aspectRatio > 1) {
-                            newHeight = CONFIG.MIN_DIMENSION;
-                            newWidth = Math.floor(CONFIG.MIN_DIMENSION * aspectRatio);
-                        } else {
-                            newWidth = CONFIG.MIN_DIMENSION;
-                            newHeight = Math.floor(CONFIG.MIN_DIMENSION / aspectRatio);
-                        }
-                    }
-
-                    canvas.width = newWidth;
-                    canvas.height = newHeight;
-
-                    ctx.imageSmoothingEnabled = true;
-                    ctx.imageSmoothingQuality = 'high';
-                    ctx.drawImage(img, 0, 0, newWidth, newHeight);
-
-                    const mimeType = MIME_TYPES[imageFile.extension] || 'image/jpeg';
-                    const supportsQuality = QUALITY_FORMATS.has(mimeType);
-                    const quality = supportsQuality
-                        ? Math.max(CONFIG.QUALITY_MIN, Math.min(CONFIG.QUALITY_MAX, compressionRatio * CONFIG.QUALITY_MULTIPLIER))
-                        : undefined;
-
-                    canvas.toBlob(
-                        (resultBlob) => {
-                            if (resultBlob) {
-                                settle(resultBlob);
-                            } else {
-                                console.warn(`Failed to create blob for ${imageFile.name}, using original`);
-                                fallback();
-                            }
-                        },
-                        mimeType,
-                        quality
-                    );
-                } catch (error) {
-                    console.error(`Error processing ${imageFile.name}:`, error);
-                    fallback();
-                }
-            };
-
+            img.onload = () => this.drawAndExport(img, imageFile, compressionRatio, settle, fallback);
             img.onerror = () => {
                 console.error(`Failed to load image: ${imageFile.name}`);
                 fallback();
             };
-
             img.src = blobUrl;
         });
     }
@@ -450,11 +397,6 @@ class ImageCompressor {
         this.el.progressText.textContent = text;
         this.el.progressPercent.textContent = `${Math.round(percent)}%`;
         this.el.progressFill.style.width = `${percent}%`;
-    }
-
-    updateFileInfo(fileName, fileSize) {
-        this.el.fileName.textContent = fileName;
-        this.el.fileSize.textContent = this.formatFileSize(fileSize);
     }
 
     updateStats() {
@@ -499,7 +441,6 @@ class ImageCompressor {
 
     resetApplication() {
         this.originalZip = null;
-        this.compressedZip = null;
         this.finalZipBlob = null;
         this.imageFiles = [];
         this.totalImages = 0;
