@@ -467,6 +467,9 @@ class ImageCompressor {
 
 // Initialize the application
 document.addEventListener('DOMContentLoaded', () => {
+    const version = document.querySelector('meta[name="app-version"]')?.content;
+    if (version) document.getElementById('appVersion').textContent = `v${version}`;
+
     const app = new ImageCompressor();
 
     window.addEventListener('beforeunload', (e) => {

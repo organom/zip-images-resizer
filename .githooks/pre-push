@@ -1,0 +1,30 @@
+#!/usr/bin/env bash
+set -e
+
+PKG="package.json"
+HTML="index.html"
+
+# Read current version from package.json
+current=$(node -p "require('./${PKG}').version")
+
+# Bump patch (1.2.3 → 1.2.4)
+new=$(node -p "
+  const [major, minor, patch] = '${current}'.split('.').map(Number);
+  \`\${major}.\${minor}.\${patch + 1}\`
+")
+
+# Update package.json
+node -e "
+  const fs = require('fs');
+  const pkg = JSON.parse(fs.readFileSync('${PKG}', 'utf8'));
+  pkg.version = '${new}';
+  fs.writeFileSync('${PKG}', JSON.stringify(pkg, null, 2) + '\n');
+"
+
+# Update meta tag in index.html
+sed -i '' "s|<meta name=\"app-version\" content=\"[^\"]*\">|<meta name=\"app-version\" content=\"${new}\">|" "${HTML}"
+
+git add "${PKG}" "${HTML}"
+git commit -m "chore: bump version to ${new}"
+
+echo "Version bumped: ${current} → ${new}"
