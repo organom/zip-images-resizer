@@ -131,6 +131,9 @@ sandbox.JSZip = JSZip;
 sandbox.Image = MockImage;
 sandbox.document = mockedDocument;
 sandbox.Archive = { init: () => {} };
+sandbox.t = (key) => key;
+sandbox.setLang = () => {};
+sandbox.getLang = () => 'en';
 // JSZip 3.x doesn't support Node's Blob — shim Blob as a function returning
 // a Uint8Array so zip.file() accepts the result.
 sandbox.Blob = function BlobShim(parts) {

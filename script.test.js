@@ -39,6 +39,9 @@ document.body.innerHTML = DOM_HTML;
 const sandbox = Object.create(globalThis);
 sandbox.window = sandbox;
 sandbox.Archive = { init: () => {} };
+sandbox.t = (key) => key;
+sandbox.setLang = () => {};
+sandbox.getLang = () => 'en';
 vm.createContext(sandbox);
 
 // Wrap in an IIFE that assigns everything to the sandbox explicitly
@@ -320,7 +323,7 @@ describe('showResults', () => {
     it('shows ZIP overhead message when final size exceeds original', () => {
         app.imageFiles = [{ originalSize: 500 }];
         app.showResults(1000);
-        expect(document.getElementById('spaceSaved').textContent).toContain('ZIP overhead');
+        expect(document.getElementById('spaceSaved').textContent).toContain('zipOverhead');
     });
 
     it('handles zero original size without crashing', () => {
@@ -363,6 +366,6 @@ describe('processFile', () => {
     it('rejects non-ZIP files', async () => {
         const file = new File(['data'], 'photo.jpg', { type: 'image/jpeg' });
         await app.processFile(file);
-        expect(app.showError).toHaveBeenCalledWith('Unsupported file format. Please select a ZIP, RAR, 7z, or TAR archive.');
+        expect(app.showError).toHaveBeenCalledWith('errorUnsupported');
     });
 });

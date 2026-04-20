@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="app-version" content="0.0.15">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ZipToSize - Compress images inside ZIP, RAR, 7z Archives Online</title>
+    <title>ZipToSize - Compress images inside any archive to a target size</title>
     <link rel="stylesheet" href="styles.css">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
@@ -16,7 +16,15 @@
                 <i class="fas fa-compress-alt"></i>
                 <h1>ZipToSize</h1>
             </a>
-            <p class="subtitle">Compress your images inside a ZIP, RAR, or 7z archive to fit a given size</p>
+            <p class="subtitle" data-i18n="subtitle">Compress your images inside any archive to fit a given size</p>
+            <div class="header-controls">
+                <div class="lang-switcher">
+                    <button class="lang-btn" data-lang="en">EN</button>
+                    <button class="lang-btn" data-lang="pt">PT</button>
+                    <button class="lang-btn" data-lang="de">DE</button>
+                </div>
+                <button class="theme-btn" id="themeBtn">🌙</button>
+            </div>
         </header>
 
         <main class="main-content">
@@ -25,17 +33,17 @@
                     <div class="upload-icon">
                         <i class="fas fa-cloud-upload-alt"></i>
                     </div>
-                    <h2>Drop your archive here</h2>
-                    <p>or click to browse</p>
+                    <h2 data-i18n="dropArchive">Drop your archive here</h2>
+                    <p data-i18n="orBrowse">or click to browse</p>
                     <input type="file" id="fileInput" accept=".zip,.rar,.7z,.tar,.gz,.bz2,.xz,.tar.gz,.tar.bz2,.tar.xz" hidden>
                     <div class="file-types">
-                        <span>Supports: ZIP, RAR, 7z, TAR and more</span>
+                        <span data-i18n="supports">Supports: ZIP, RAR, 7z, TAR and more</span>
                     </div>
                 </div>
 
                 <div class="settings-panel">
                     <div class="setting-group">
-                        <label for="maxSize">Target final ZIP Size (MB)</label>
+                        <label for="maxSize" data-i18n="targetSize">Target final ZIP Size (MB)</label>
                         <div class="input-group">
                             <input type="number" id="maxSize" value="3.5" min="0.1" max="50" step="0.1">
                             <span class="input-suffix">MB</span>
@@ -67,19 +75,19 @@
 
                 <div class="compression-stats">
                     <div class="stat-item">
-                        <span class="stat-label">Original Size</span>
+                        <span class="stat-label" data-i18n="originalSize">Original Size</span>
                         <span class="stat-value" id="originalSize">-</span>
                     </div>
                     <div class="stat-item">
-                        <span class="stat-label">Compressed Size</span>
+                        <span class="stat-label" data-i18n="compressedSize">Compressed Size</span>
                         <span class="stat-value" id="compressedSize">-</span>
                     </div>
                     <div class="stat-item">
-                        <span class="stat-label">Images Processed</span>
+                        <span class="stat-label" data-i18n="imagesProcessed">Images Processed</span>
                         <span class="stat-value" id="imagesProcessed">-</span>
                     </div>
                     <div class="stat-item">
-                        <span class="stat-label">Compression Ratio</span>
+                        <span class="stat-label" data-i18n="compressionRatio">Compression Ratio</span>
                         <span class="stat-value" id="compressionRatio">-</span>
                     </div>
                 </div>
@@ -90,16 +98,16 @@
                     <div class="result-icon">
                         <i class="fas fa-check-circle"></i>
                     </div>
-                    <h2>Compression Complete!</h2>
-                    <p>Your images have been successfully compressed</p>
+                    <h2 data-i18n="compressionComplete">Compression Complete!</h2>
+                    <p data-i18n="successMsg">Your images have been successfully compressed</p>
 
                     <div class="result-stats">
                         <div class="result-stat">
-                            <span class="result-label">Final Size</span>
+                            <span class="result-label" data-i18n="finalSize">Final Size</span>
                             <span class="result-value" id="finalSize">-</span>
                         </div>
                         <div class="result-stat">
-                            <span class="result-label">Space Saved</span>
+                            <span class="result-label" data-i18n="spaceSaved">Space Saved</span>
                             <span class="result-value" id="spaceSaved">-</span>
                         </div>
                     </div>
@@ -107,11 +115,11 @@
                     <div class="action-buttons">
                         <button class="btn btn-primary" id="downloadBtn">
                             <i class="fas fa-download"></i>
-                            Download Compressed ZIP
+                            <span data-i18n="downloadBtn">Download Compressed ZIP</span>
                         </button>
                         <button class="btn btn-secondary" id="newFileBtn">
                             <i class="fas fa-plus"></i>
-                            Compress Another File
+                            <span data-i18n="compressAnother">Compress Another File</span>
                         </button>
                     </div>
                 </div>
@@ -119,7 +127,7 @@
         </main>
 
         <footer class="footer">
-            <p>&copy; 2025 ZipToSize by Ricardo Gomes. All processing is done locally in your browser. <span id="appVersion"></span></p>
+            <p><span data-i18n="footer">© 2025 ZipToSize by Ricardo Gomes. All processing is done locally in your browser.</span> <span id="appVersion"></span></p>
         </footer>
     </div>
 
@@ -127,4 +135,3 @@
     <script type="module" src="script.js"></script>
 </body>
 </html>
-

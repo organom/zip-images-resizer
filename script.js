@@ -1,4 +1,5 @@
 import { Archive } from './libarchive.js';
+import { t, setLang, getLang } from './i18n.js';
 
 Archive.init({ workerUrl: './worker-bundle.js' });
 
@@ -113,13 +114,13 @@ class ImageCompressor {
         const supported = ['.zip', '.rar', '.7z', '.tar', '.gz', '.bz2', '.xz'].some(ext => name.endsWith(ext));
 
         if (!supported) {
-            this.showError('Unsupported file format. Please select a ZIP, RAR, 7z, or TAR archive.');
+            this.showError(t('errorUnsupported'));
             return;
         }
 
         try {
             this.showSection('processingSection');
-            this.updateProgress('Loading archive...', 0);
+            this.updateProgress(t('loadingArchive'), 0);
             this.outputName = this.outputFileName(file.name);
 
             if (isZip) {
@@ -132,7 +133,7 @@ class ImageCompressor {
             await this.extractImageFiles();
 
             if (this.imageFiles.length === 0) {
-                this.showError('No image files found in the archive.');
+                this.showError(t('errorNoImages'));
                 return;
             }
 
@@ -141,12 +142,12 @@ class ImageCompressor {
             await this.compressImages();
         } catch (error) {
             console.error('Error processing file:', error);
-            this.showError('Error processing the archive. Please try again.');
+            this.showError(t('errorProcessing'));
         }
     }
 
     async loadViaLibarchive(file) {
-        this.updateProgress('Extracting archive...', 2);
+        this.updateProgress(t('extractingArchive'), 2);
         const archive = await Archive.open(file);
         // extractFiles() extracts all entries and returns nested { path: File } object.
         // getFilesArray() then flattens it to [{ file: File, path: "dir/" }].
@@ -230,7 +231,7 @@ class ImageCompressor {
 
         this.finalZipBlob = finalBlob;
         this.processedImages = this.totalImages;
-        this.updateProgress('Complete!', 100);
+        this.updateProgress(t('complete'), 100);
         this.updateStats();
         this.showResults(finalBlob.size);
         return true;
@@ -254,7 +255,7 @@ class ImageCompressor {
     async runCompressionIteration(compressionRatio, iteration) {
         const ratio = Math.max(compressionRatio, CONFIG.MIN_COMPRESSION_RATIO);
 
-        this.updateProgress(`Compression iteration ${iteration + 1}...`, Math.min(10 + iteration * 8, 80));
+        this.updateProgress(t('compressionIteration', iteration + 1), Math.min(10 + iteration * 8, 80));
 
         console.log(`Iteration ${iteration + 1}: ratio=${ratio.toFixed(3)}`);
 
@@ -269,7 +270,7 @@ class ImageCompressor {
     }
 
     async compressImages() {
-        this.updateProgress('Analyzing images...', 5);
+        this.updateProgress(t('analyzingImages'), 5);
 
         const targetZipSizeBytes = this.maxSizeMB * 1024 * 1024;
 
@@ -325,14 +326,14 @@ class ImageCompressor {
 
         if (!bestZip) throw new Error('Failed to create compressed ZIP');
 
-        this.updateProgress('Finalizing...', 90);
+        this.updateProgress(t('finalizing'), 90);
 
         const finalBlob = await this.generateZipBlob(bestZip, CONFIG.ZIP_FINAL_LEVEL);
         this.finalZipBlob = finalBlob;
 
         console.log(`Final ZIP size: ${(finalBlob.size / 1024 / 1024).toFixed(2)} MB`);
 
-        this.updateProgress('Complete!', 100);
+        this.updateProgress(t('complete'), 100);
         this.updateStats();
         this.showResults(finalBlob.size);
     }
@@ -479,7 +480,7 @@ class ImageCompressor {
         this.el.finalSize.textContent = this.formatFileSize(finalSize);
         this.el.spaceSaved.textContent = spaceSaved >= 0
             ? `${this.formatFileSize(spaceSaved)} (${savingsPercent}%)`
-            : `+${this.formatFileSize(-spaceSaved)} (ZIP overhead)`;
+            : `+${this.formatFileSize(-spaceSaved)} (${t('zipOverhead')})`;
 
         this.showSection('resultSection');
     }
@@ -524,17 +525,50 @@ class ImageCompressor {
     }
 }
 
+function applyTheme(dark) {
+    document.documentElement.dataset.theme = dark ? 'dark' : '';
+    document.getElementById('themeBtn').textContent = dark ? '☀️' : '🌙';
+    localStorage.setItem('ziptosize-theme', dark ? 'dark' : 'light');
+}
+
+function applyTranslations() {
+    document.querySelectorAll('[data-i18n]').forEach(el => {
+        el.textContent = t(el.dataset.i18n);
+    });
+    document.documentElement.lang = getLang();
+    document.title = t('title');
+    document.querySelectorAll('.lang-btn').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.lang === getLang());
+    });
+}
+
 // Initialize the application
 document.addEventListener('DOMContentLoaded', () => {
     const version = document.querySelector('meta[name="app-version"]')?.content;
     if (version) document.getElementById('appVersion').textContent = `v${version}`;
+
+    const savedDark = localStorage.getItem('ziptosize-theme') === 'dark'
+        || (localStorage.getItem('ziptosize-theme') === null && globalThis.matchMedia('(prefers-color-scheme: dark)').matches);
+    applyTheme(savedDark);
+
+    document.getElementById('themeBtn').addEventListener('click', () => {
+        applyTheme(document.documentElement.dataset.theme !== 'dark');
+    });
+
+    applyTranslations();
+
+    document.querySelectorAll('.lang-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            setLang(btn.dataset.lang);
+            applyTranslations();
+        });
+    });
 
     const app = new ImageCompressor();
 
     window.addEventListener('beforeunload', (e) => {
         if (app.el.processingSection.style.display !== 'none') {
             e.preventDefault();
-            e.returnValue = 'Image compression is in progress. Are you sure you want to leave?';
         }
     });
 
