@@ -21,6 +21,7 @@ const CONFIG = {
     // ZIP compression levels
     ZIP_TEST_LEVEL: 6,
     ZIP_FINAL_LEVEL: 9,
+    MAX_ITERATIONS: 50,
 };
 
 // Map extensions to their correct MIME types for canvas export
@@ -282,7 +283,9 @@ class ImageCompressor {
         let bestSize = Infinity;
 
         let consecutiveFailures = 0;
-        for (let iteration = 0; ; iteration++) {
+        let prevSize = Infinity;
+        let stagnationCount = 0;
+        for (let iteration = 0; iteration < CONFIG.MAX_ITERATIONS; iteration++) {
             let result;
             try {
                 result = await this.runCompressionIteration(compressionRatio, iteration);
@@ -303,6 +306,15 @@ class ImageCompressor {
             if (relativeSize >= CONFIG.ACCEPTABLE_LOW && relativeSize <= CONFIG.ACCEPTABLE_HIGH) {
                 break;
             }
+
+            // Break if size stopped changing (oscillation / floor reached)
+            if (Math.abs(result.zipSize - prevSize) / Math.max(prevSize, 1) < 0.001) {
+                stagnationCount++;
+                if (stagnationCount >= 3) break;
+            } else {
+                stagnationCount = 0;
+            }
+            prevSize = result.zipSize;
 
             if (result.zipSize > targetZipSizeBytes) {
                 compressionRatio *= CONFIG.RATIO_DECREASE;
