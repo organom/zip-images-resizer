@@ -47,6 +47,8 @@ class ImageCompressor {
     totalImages = 0;
     processedImages = 0;
     finalZipBlob = null;
+    originalFileSize = 0;
+    currentIterationSize = 0;
 
     constructor() {
         this.el = {
@@ -122,6 +124,7 @@ class ImageCompressor {
             this.showSection('processingSection');
             this.updateProgress(t('loadingArchive'), 0);
             this.outputName = this.outputFileName(file.name);
+            this.originalFileSize = file.size;
 
             if (isZip) {
                 const arrayBuffer = await file.arrayBuffer();
@@ -266,6 +269,8 @@ class ImageCompressor {
         const zipBlob = await this.generateZipBlob(testZip, CONFIG.ZIP_TEST_LEVEL);
 
         console.log(`Iteration ${iteration + 1}: ZIP size ${(zipBlob.size / 1024 / 1024).toFixed(2)} MB`);
+        this.currentIterationSize = zipBlob.size;
+        this.updateStats();
         return { testZip, zipSize: zipBlob.size };
     }
 
@@ -459,22 +464,25 @@ class ImageCompressor {
     }
 
     updateStats() {
-        this.el.originalSize.textContent = this.formatFileSize(this.totalOriginalSize);
+        this.el.originalSize.textContent = this.formatFileSize(this.originalFileSize || this.totalOriginalSize);
         this.el.imagesProcessed.textContent = `${this.processedImages}/${this.totalImages}`;
 
-        if (this.finalZipBlob) {
-            this.el.compressedSize.textContent = this.formatFileSize(this.finalZipBlob.size);
-            const ratio = this.totalOriginalSize > 0
-                ? ((this.totalOriginalSize - this.finalZipBlob.size) / this.totalOriginalSize * 100).toFixed(1)
+        const displaySize = this.finalZipBlob?.size ?? this.currentIterationSize;
+        if (displaySize > 0) {
+            this.el.compressedSize.textContent = this.formatFileSize(displaySize);
+            const base = this.originalFileSize || this.totalOriginalSize;
+            const ratio = base > 0
+                ? ((base - displaySize) / base * 100).toFixed(1)
                 : '0.0';
             this.el.compressionRatio.textContent = `${ratio}%`;
         }
     }
 
     showResults(finalSize) {
-        const spaceSaved = this.totalOriginalSize - finalSize;
-        const savingsPercent = this.totalOriginalSize > 0
-            ? ((spaceSaved / this.totalOriginalSize) * 100).toFixed(1)
+        const base = this.originalFileSize || this.totalOriginalSize;
+        const spaceSaved = base - finalSize;
+        const savingsPercent = base > 0
+            ? ((spaceSaved / base) * 100).toFixed(1)
             : '0.0';
 
         this.el.finalSize.textContent = this.formatFileSize(finalSize);
@@ -502,6 +510,8 @@ class ImageCompressor {
         this.originalZip = null;
         this.finalZipBlob = null;
         this.outputName = null;
+        this.originalFileSize = 0;
+        this.currentIterationSize = 0;
         this.imageFiles = [];
         this.totalImages = 0;
         this.processedImages = 0;
