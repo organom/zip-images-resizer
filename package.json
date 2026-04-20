@@ -1,6 +1,6 @@
 {
   "name": "zip-images-resizer",
-  "version": "0.0.10",
+  "version": "0.0.11",
   "description": "A modern, client-side image compression tool that allows users to upload ZIP files containing images and compress them to a target size while maintaining proportions.",
   "type": "module",
   "scripts": {
